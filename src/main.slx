@@ -1,0 +1,10 @@
+pattern = number | string | pattern*
+
+match expr {
+    case pattern {
+
+    }
+    case {
+
+    }
+}
