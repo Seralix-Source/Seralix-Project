@@ -40,6 +40,8 @@ SYMBOL: dict[str, Parser[Token, Text]] = {
     '<=': tok('SYMBOL', '<='),
     '>':  tok('SYMBOL', '>'),
     '>=': tok('SYMBOL', '>='),
+
+    '=': tok('SYMBOL', '='),
 }
 
 @dataclass
@@ -172,53 +174,44 @@ cmp = (
 
 @dataclass
 class ArrowFunction(Expr):
-    params: list[Name]
+    @dataclass
+    class Param(AST):
+        name: Name
+        default: Expr | None
+
+    params: list[Param]
     returns: Expr
+
+def arrow(m):
+    defaulting = False
+    for param in (params := m[1] or []):
+        if param.default is not None:
+            defaulting = True
+        elif defaulting:
+            raise SyntaxError
+
+    return ArrowFunction(params=params, returns=m[4])
+
+arrowparam = (
+    name
+    + maybe(SYMBOL['='] + expr >> (lambda m: m[1]))
+    >> (lambda m: ArrowFunction.Param(m[0], m[1]))
+)
 arrowfunction = (
     SYMBOL['(']
     + maybe(
-        name
-        + many(SYMBOL[','] + name >> (lambda m: m[1]))
+        arrowparam
+        + many(SYMBOL[','] + arrowparam >> (lambda m: m[1]))
         >> (lambda m: [m[0], *m[1]])
     )
     + SYMBOL[')']
     + SYMBOL['->']
     + expr
-    >> (lambda m: ArrowFunction(m[1] or [], m[4]))
+    >>  arrow
 )
 arrowfunction |= cmp
 
 expr.define(arrowfunction)
-
-@dataclass
-class Match(Stmt):
-    @dataclass
-    class Pattern(AST):
-        pass
-    pattern = forward_decl()
-    @dataclass
-    class Sequence(Pattern):
-        patterns: list[Match.Pattern]
-    sequence = SYMBOL['['] + maybe(pattern + many(SYMBOL[','] + pattern >> (lambda m: m[1])) >> (lambda m: [m[0], *m[1]])) + SYMBOL[']'] >> (lambda m: Match.Sequence(m[1] or []))
-    @dataclass
-    class String(Pattern):
-        string: str
-    string = tok('STRING') >> (lambda s: Match.String(s))
-    @dataclass
-    class Number(Pattern):
-        number: str
-    number = tok('NUMBER') >> (lambda n: Match.Number(n))
-    pattern.define(sequence | string | number)
-
-    @dataclass
-    class Case(AST):
-        pattern: Match.Pattern | None
-        block: list[AST]
-
-    subject: Expr
-    cases: list[Case]
-
-matchcase = KEYWORD['match'] + expr + SYMBOL['{'] + SYMBOL['}']
 
 def parser(source: Text) -> AST:
     return expr.parse(lexer(source))

@@ -36,6 +36,8 @@ SymbolRE: str = '(?:%s)' % '|'.join(map(re.escape, sorted({
     '->',
 
     '==', '!=', '<', '<=', '>', '>=',
+
+    '='
 }, key=len, reverse=True)))
 
 NameRE: str = r'[^\W\d]\w*'

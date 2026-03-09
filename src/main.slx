@@ -1,10 +1,1 @@
-pattern = number | string | pattern*
-
-match expr {
-    case pattern {
-
-    }
-    case {
-
-    }
-}
+(a, b, c=2) -> a + c + b;
