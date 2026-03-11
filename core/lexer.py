@@ -29,13 +29,15 @@ NumberRE: str = r'(?:%s)' % '|'.join((ImagNumber, FloatNumber, IntNumber))
 SymbolRE: str = '(?:%s)' % '|'.join(map(re.escape, sorted({
     '(', ')', '[', ']', '{', '}',
 
-    '.', ',', ';',
+    '.', ',', ';', ':', '?',
 
     '+', '-', '*', '/', '%', '**',
 
     '->',
 
     '==', '!=', '<', '<=', '>', '>=',
+
+    '<<', '>>', '&', '|', '~', '^',
 
     '='
 }, key=len, reverse=True)))

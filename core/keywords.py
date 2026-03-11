@@ -1,3 +1,4 @@
 kwlist: frozenset[str] = frozenset({
-    'match', 'case'
+    'and', 'or',
+    'if', 'else',
 })
