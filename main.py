@@ -1,8 +1,6 @@
-from rich.pretty import pprint
-
-from core.parser import parser
+from core.runner import run
 
 with open('src/main.slx') as stream:
     source: str = stream.read()
 
-pprint(parser(source))
+run(source)

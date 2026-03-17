@@ -52,6 +52,18 @@ SYMBOL: dict[str, Parser[Token, Text]] = {
     ':': tok('SYMBOL', ':'),
 
     '=': tok('SYMBOL', '='),
+    '+=': tok('SYMBOL', '+='),
+    '-=': tok('SYMBOL', '-='),
+    '*=': tok('SYMBOL', '*='),
+    '/=': tok('SYMBOL', '/='),
+    '%=': tok('SYMBOL', '%='),
+    '**=': tok('SYMBOL', '**='),
+
+    '&=': tok('SYMBOL', '&='),
+    '|=': tok('SYMBOL', '|='),
+    '^=': tok('SYMBOL', '^='),
+    '<<=': tok('SYMBOL', '<<='),
+    '>>=': tok('SYMBOL', '>>='),
 }
 
 @dataclass
@@ -70,7 +82,7 @@ gexpr = SYMBOL['('] + expr + SYMBOL[')'] >> (lambda match: match[1])
 
 @dataclass
 class Sequence(Expr):
-    exprs: list[Expr]
+    object: list[Expr]
 sequence = (
     SYMBOL['[']
     + maybe(
@@ -84,13 +96,13 @@ sequence = (
 
 @dataclass
 class String(Expr):
-    string: str
-string = tok('STRING') >> (lambda s: String(s))
+    string: str | bytes
+string = tok('STRING') >> (lambda s: String(eval(s)))
 
 @dataclass
 class Number(Expr):
-    number: str
-number = tok('NUMBER') >> (lambda n: Number(n))
+    number: int | float | complex
+number = tok('NUMBER') >> (lambda n: Number(eval(n)))
 
 @dataclass
 class Name(Expr):
@@ -212,6 +224,17 @@ cmp = (
     >> (lambda m: reduce(lambda l, r: BinaryOp(op=r[0], left=l, right=r[1]), m[1], m[0]))
 )
 
+booland = (
+    cmp
+    + many(KEYWORD['and'] + cmp)
+    >> (lambda m: reduce(lambda l, r: BinaryOp(op=r[0], left=l, right=r[1]), m[1], m[0]))
+)
+
+boolor = (
+    booland
+    + many(KEYWORD['or'] + booland)
+    >> (lambda m: reduce(lambda l, r: BinaryOp(op=r[0], left=l, right=r[1]), m[1], m[0]))
+)
 
 @dataclass
 class TernaryOp(Expr):
@@ -220,14 +243,9 @@ class TernaryOp(Expr):
     iffalse: Expr
 
 ternary = (
-    cmp
-    + maybe(
-        SYMBOL['?']
-        + expr
-        + SYMBOL[':']
-        + expr
-    )
-    >> (lambda m: TernaryOp(m[0], m[1][1], m[1][3]) if m[1] else m[0])
+    boolor
+    + maybe(SYMBOL['?'] + expr + SYMBOL[':'] + expr)
+    >> (lambda m: TernaryOp(condition=m[0], iftrue=m[1][1], iffalse=m[1][3]) if m[1] else m[0])
 )
 
 @dataclass
@@ -271,6 +289,163 @@ arrowfunction |= ternary
 
 expr.define(arrowfunction)
 
+stmt = forward_decl()
 
-def parser(source: Text) -> AST:
-    return expr.parse(lexer(source))
+@dataclass
+class Assignment(Stmt):
+    op: str
+    target: Expr
+    object: Expr
+
+assignment = (
+    subterminal
+    + (
+        SYMBOL['='] |
+        SYMBOL['+='] |
+        SYMBOL['-='] |
+        SYMBOL['*='] |
+        SYMBOL['/='] |
+        SYMBOL['%='] |
+        SYMBOL['**='] |
+        SYMBOL['&='] |
+        SYMBOL['|='] |
+        SYMBOL['^='] |
+        SYMBOL['<<='] |
+        SYMBOL['>>=']
+    )
+    + expr
+    + SYMBOL[';']
+    >> (lambda m: Assignment(op=m[1], target=m[0], object=m[2]))
+)
+
+@dataclass
+class ExprStmt(Stmt):
+    expr: Expr
+
+exprstmt = (
+    expr
+    + SYMBOL[';']
+    >> (lambda m: ExprStmt(expr=m[0]))
+)
+
+@dataclass
+class IfElse(Stmt):
+    @dataclass
+    class Elif(AST):
+        cond: Expr
+        body: list[Stmt]
+
+    cond: Expr
+    body: list[Stmt]
+    elifs: list[Elif]
+    otherwise: list[Stmt] | None = None
+
+block = (
+    SYMBOL['{']
+    + many(stmt)
+    + SYMBOL['}']
+    >> (lambda m: m[1])
+)
+
+elifpart = (
+    KEYWORD['elif']
+    + expr
+    + block
+    >> (lambda m: IfElse.Elif(cond=m[1], body=m[2]))
+)
+
+elsepart = (
+    KEYWORD['else']
+    + block
+    >> (lambda m: m[1])
+)
+
+ifelse = (
+    KEYWORD['if']
+    + expr
+    + block
+    + many(elifpart)
+    + maybe(elsepart)
+    >> (lambda m: IfElse(
+        cond=m[1],
+        body=m[2],
+        elifs=m[3],
+        otherwise=m[4],
+    ))
+)
+
+@dataclass
+class While(Stmt):
+    cond: Expr
+    body: list[Stmt]
+
+whileloop = (
+    KEYWORD['while']
+    + expr
+    + block
+    >> (lambda m: While(cond=m[1], body=m[2]))
+)
+
+@dataclass
+class ForIn(Stmt):
+    target: Name
+    iterable: Expr
+    body: list[Stmt]
+
+forin = (
+    KEYWORD['for']
+    + name
+    + KEYWORD['in']
+    + expr
+    + block
+    >> (lambda m: ForIn(target=m[1], iterable=m[3], body=m[4]))
+)
+
+@dataclass
+class Function(Stmt):
+    name: Name
+    params: list[ArrowFunction.Param]
+    body: list[Stmt]
+
+def params(m):
+    defaulting = False
+    for param in (params := m or []):
+        if param.default is not None:
+            defaulting = True
+        elif defaulting:
+            raise SyntaxError("non-default parameter cannot follow default parameter")
+    return params
+
+function = (
+    KEYWORD['function']
+    + name
+    + SYMBOL['(']
+    + maybe(
+        arrowparam
+        + many(SYMBOL[','] + arrowparam >> (lambda m: m[1]))
+        >> (lambda m: [m[0], *m[1]])
+    )
+    + SYMBOL[')']
+    + block
+    >> (lambda m: Function(
+        name=m[1],
+        params=params(m[3]),
+        body=m[5],
+    ))
+)
+
+@dataclass
+class Return(Stmt):
+    expr: Expr | None = None
+
+returnstmt = (
+        KEYWORD['return']
+        + maybe(expr)
+        + SYMBOL[';']
+        >> (lambda m: Return(expr=m[1]))
+)
+
+stmt.define(forin | whileloop | ifelse | function | returnstmt | assignment | exprstmt)
+
+def parser(source: Text) -> list[Stmt]:
+    return many(stmt).parse(lexer(source))

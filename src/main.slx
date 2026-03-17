@@ -1,1 +1,97 @@
-(x, y) -> x * y % 2 == 0 ? 'even' : 'odd'
+function powmod(base, exp, mod) {
+    result = 1;
+    base %= mod;
+
+    while exp > 0 {
+        if exp & 1 {
+            result = result * base % mod;
+        }
+
+        base = base * base % mod;
+        exp >>= 1;
+    }
+
+    return result;
+}
+
+function bit_reverse_permute(a) {
+    n = len(a);
+    i = 1;
+    j = 0;
+
+    while i < n {
+        bit = n >> 1;
+
+        while j & bit {
+            j ^= bit;
+            bit >>= 1;
+        }
+
+        j ^= bit;
+
+        if i < j {
+            tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+
+        i += 1;
+    }
+
+    return a;
+}
+
+function ntt(a, mod=998244353, primitive_root=3) {
+    n = len(a);
+
+    bit_reverse_permute(a);
+
+    length = 2;
+    while length <= n {
+        wlen = powmod(primitive_root, (mod - 1) / length, mod);
+
+        i = 0;
+        while i < n {
+            w = 1;
+            j = 0;
+
+            while j < length >> 1 {
+                u = a[i + j];
+                v = a[i + j + (length >> 1)] * w % mod;
+
+                a[i + j] = (u + v) % mod;
+                a[i + j + (length >> 1)] = (u - v + mod) % mod;
+
+                w = w * wlen % mod;
+                j += 1;
+            }
+
+            i += length;
+        }
+
+        length <<= 1;
+    }
+
+    return a;
+}
+
+function pad_to_pow2(a) {
+    n = len(a);
+    size = 1;
+
+    while size < n {
+        size <<= 1;
+    }
+
+    while len(a) < size {
+        a = [a, 0];
+    }
+
+    return a;
+}
+
+function main() {
+    a = [1, 2, 3, 4, 0, 0, 0, 0];
+    result = ntt(a);
+    return result;
+}
