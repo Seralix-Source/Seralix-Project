@@ -1,6 +1,6 @@
-from core.runner import run
+from core.runner import runner
 
 with open('src/main.slx') as stream:
     source: str = stream.read()
 
-run(source)
+runner(source).run()

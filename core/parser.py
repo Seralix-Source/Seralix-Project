@@ -82,7 +82,7 @@ gexpr = SYMBOL['('] + expr + SYMBOL[')'] >> (lambda match: match[1])
 
 @dataclass
 class Sequence(Expr):
-    object: list[Expr]
+    objects: list[Expr]
 sequence = (
     SYMBOL['[']
     + maybe(
@@ -96,17 +96,17 @@ sequence = (
 
 @dataclass
 class String(Expr):
-    string: str | bytes
+    object: str | bytes
 string = tok('STRING') >> (lambda s: String(eval(s)))
 
 @dataclass
 class Number(Expr):
-    number: int | float | complex
+    object: int | float | complex
 number = tok('NUMBER') >> (lambda n: Number(eval(n)))
 
 @dataclass
 class Name(Expr):
-    name: str
+    id: str
 name = tok('NAME') >> (lambda x: Name(x))
 
 terminal = sequence | string | number | name
@@ -124,17 +124,34 @@ accessing = SYMBOL['.'] + name >> (lambda m: partial(Accessing, member=m[1]))
 
 @dataclass
 class Indexing(Expr):
+    @dataclass
+    class Slice(AST):
+        start: Expr | None = None
+        stop: Expr | None = None
+        step: Expr | None = None
+
     expr: Expr
-    indexes: list[Expr]
+    subscript: Expr | Slice
+
+
+slice = (
+        maybe(expr)
+        + SYMBOL[':']
+        + maybe(expr)
+        + maybe(SYMBOL[':'] + maybe(expr))
+        >> (
+            lambda m: Indexing.Slice(
+                start=m[0],
+                stop=m[2],
+                step=m[3][1] if m[3] else None,
+            )
+        )
+)
 indexing = (
-    SYMBOL['[']
-    + (
-        expr
-        + many(SYMBOL[','] + expr >> (lambda m: m[1]))
-        >> (lambda m: [m[0], *m[1]])
-    )
-    + SYMBOL[']']
-    >> (lambda m: partial(Indexing, indexes=m[1]))
+        SYMBOL['[']
+        + (slice | expr)
+        + SYMBOL[']']
+        >> (lambda m: partial(Indexing, subscript=m[1]))
 )
 
 @dataclass
@@ -403,8 +420,13 @@ forin = (
 
 @dataclass
 class Function(Stmt):
+    @dataclass
+    class Param(AST):
+        name: Name
+        default: Expr | None = None
+
     name: Name
-    params: list[ArrowFunction.Param]
+    params: list[Param]
     body: list[Stmt]
 
 def params(m):
@@ -416,13 +438,18 @@ def params(m):
             raise SyntaxError("non-default parameter cannot follow default parameter")
     return params
 
+param = (
+    name
+    + maybe(SYMBOL['='] + expr >> (lambda m: m[1]))
+    >> (lambda m: Function.Param(m[0], m[1]))
+)
 function = (
     KEYWORD['function']
     + name
     + SYMBOL['(']
     + maybe(
-        arrowparam
-        + many(SYMBOL[','] + arrowparam >> (lambda m: m[1]))
+        param
+        + many(SYMBOL[','] + param >> (lambda m: m[1]))
         >> (lambda m: [m[0], *m[1]])
     )
     + SYMBOL[')']
@@ -449,3 +476,6 @@ stmt.define(forin | whileloop | ifelse | function | returnstmt | assignment | ex
 
 def parser(source: Text) -> list[Stmt]:
     return many(stmt).parse(lexer(source))
+
+__all__ = ['parser']
+__all__ += (name for name, object in globals().items() if isinstance(object, type) and issubclass(object, AST))
