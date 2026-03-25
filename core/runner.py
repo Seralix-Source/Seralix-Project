@@ -57,6 +57,9 @@ class runner:  # NOQA: N801
         })()
         self._stack: list[dict] = [{
             'print': cprint,
+            'range': range,
+            'int': int,
+            'len': len,
             'null': self.null,
             'true': True,
             'false': False,
@@ -76,9 +79,6 @@ class runner:  # NOQA: N801
             self._stack.pop()
 
     def mkcaller(self, node: ArrowFunction | Function) -> Callable[..., Any]:
-
-
-        @cache
         def caller(*varargs: Any) -> Any:
             with self.calling():
                 if len(varargs) < sum(param.default is None for param in node.params):

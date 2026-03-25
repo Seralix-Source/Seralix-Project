@@ -1,7 +1,44 @@
-function fibonacci(x) {
-    if x < 2 {
-        return x;
+function modpow(a, e, mod) {
+    res = 1;
+    while (e > 0) {
+        if e & 1 {
+            res = (res * a) % mod;
+        }
+        a = (a * a) % mod;
+        e >>= 1;
     }
-    return fibonacci(x - 1) + fibonacci(x - 2);
+    return res;
 }
-print(fibonacci(6));
+
+function ntt(a, root, mod) {
+    n = len(a);
+    if n == 1 {
+        return a[:];
+    }
+    root_n2 = root * root % mod;
+
+    a_even = a[0::2];
+    a_odd = a[1::2];
+
+    y_even = ntt(a_even, root_n2, mod);
+    y_odd = ntt(a_odd, root_n2, mod);
+
+    y = [0] * n;
+    w = 1;
+    for k in range(int(n / 2)) {
+        t = w * y_odd[k] % mod;
+        y[k] = (y_even[k] + t) % mod;
+        y[k + int(n / 2)] = (y_even[k] - t) % mod;
+        w = w * root % mod;
+    }
+    return y;
+}
+
+mod = 998244353;
+g = 3;
+n = 8;
+root = modpow(g, int((mod - 1) / n), mod);
+
+a = [1, 2, 3, 4, 5, 6, 7, 8];
+A = ntt(a, root, mod);
+print(A);
