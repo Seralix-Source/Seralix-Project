@@ -1,3 +1,4 @@
+import math
 import operator
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -70,6 +71,9 @@ class runner:  # NOQA: N801
             'null': self.null,
             'true': True,
             'false': False,
+            'pi': math.pi,
+            'round': round,
+            'cis': lambda x: complex(math.cos(x), math.sin(x)),
         }]
         self.nodes: list[AST] = parser(source)
 
@@ -209,7 +213,13 @@ class runner:  # NOQA: N801
                         return self.exec(node.expr)(*map(self.exec, node.arguments))
 
                     case UnaryOp():
-                        return ops[node.op](self.exec(node.expr))
+                        match node.op:
+                            case '+':
+                                return self.exec(node.expr)
+                            case '-':
+                                return -self.exec(node.expr)
+                            case _:
+                                return ops[node.op](self.exec(node.expr))
 
                     case BinaryOp():
                         return ops[node.op](self.exec(node.left), self.exec(node.right))

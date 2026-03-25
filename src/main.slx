@@ -1,44 +1,130 @@
-function modpow(a, e, mod) {
-    res = 1;
-    while (e > 0) {
-        if e & 1 {
-            res = (res * a) % mod;
-        }
-        a = (a * a) % mod;
-        e >>= 1;
+# returns the smallest power of two greater than or equal to n
+# fft-based polynomial multiplication works most naturally when the size is a power of two
+function next_pow2(n) {
+    # start from 1 and keep doubling until the size is enough
+    size = 1;
+
+    # if size is still smaller than n, double it with a left shift
+    while size < n {
+        size <<= 1;
     }
-    return res;
+
+    # return the computed power-of-two size
+    return size;
 }
 
-function ntt(a, root, mod) {
+# computes the recursive fast fourier transform of a
+# if invert is true, this acts as the inverse fft except for the final division by n
+function fft(a, invert=false) {
+    # n is the current sequence length
     n = len(a);
+
+    # base case of the recursion
+    # a sequence of length 1 is already its own transform
     if n == 1 {
-        return a[:];
+        return [a[0]];
     }
-    root_n2 = root * root % mod;
 
-    a_even = a[0::2];
-    a_odd = a[1::2];
+    # recursively transform the even-indexed coefficients
+    even = fft(a[0::2], invert);
 
-    y_even = ntt(a_even, root_n2, mod);
-    y_odd = ntt(a_odd, root_n2, mod);
+    # recursively transform the odd-indexed coefficients
+    odd = fft(a[1::2], invert);
 
-    y = [0] * n;
+    # compute the principal angle for this stage
+    # for inverse fft we flip the sign of the angle
+    angle = 2 * pi / n;
+    if invert {
+        angle = -angle;
+    }
+
+    # wn is the primitive n-th root of unity for this stage
+    wn = cis(angle);
+
+    # w starts at 1 and is multiplied by wn each iteration
+    # this generates successive powers of the root of unity
     w = 1;
-    for k in range(int(n / 2)) {
-        t = w * y_odd[k] % mod;
-        y[k] = (y_even[k] + t) % mod;
-        y[k + int(n / 2)] = (y_even[k] - t) % mod;
-        w = w * root % mod;
+
+    # allocate the output sequence for this stage
+    y = [0] * n;
+
+    # iterate over the first half and build both halves of the result
+    k = 0;
+    while k < (n >> 1) {
+        # butterfly combination
+        y[k] = even[k] + w * odd[k];
+        y[k + (n >> 1)] = even[k] - w * odd[k];
+
+        # move to the next root-of-unity power
+        w *= wn;
+        k += 1;
     }
+
+    # return the transformed sequence
     return y;
 }
 
-mod = 998244353;
-g = 3;
-n = 8;
-root = modpow(g, int((mod - 1) / n), mod);
+# multiplies two polynomials represented as coefficient arrays
+# for example [1, 2, 3] means 1 + 2x + 3x^2
+function polymul(a, b) {
+    # the resulting polynomial degree is deg(a) + deg(b)
+    # so the coefficient count is len(a) + len(b) - 1
+    needed = len(a) + len(b) - 1;
 
-a = [1, 2, 3, 4, 5, 6, 7, 8];
-A = ntt(a, root, mod);
-print(A);
+    # choose the fft size as the next power of two
+    n = next_pow2(needed);
+
+    # pad a with zeros until its length reaches n
+    while len(a) < n {
+        a = a + [0];
+    }
+
+    # pad b with zeros until its length reaches n
+    while len(b) < n {
+        b = b + [0];
+    }
+
+    # transform both polynomials into point-value form
+    fa = fft(a);
+    fb = fft(b);
+
+    # multiply the transformed values pointwise
+    i = 0;
+    while i < n {
+        fa[i] *= fb[i];
+        i += 1;
+    }
+
+    # apply inverse fft to come back to coefficient form
+    result = fft(fa, true);
+
+    # normalize by dividing every coefficient by n
+    i = 0;
+    while i < n {
+        result[i] /= n;
+        i += 1;
+    }
+
+    # extract only the needed number of coefficients
+    # round the real part because floating-point fft can introduce tiny numeric errors
+    out = [];
+    i = 0;
+    while i < needed {
+        out = out + [round(result[i].real)];
+        i += 1;
+    }
+
+    # return the final coefficient list
+    return out;
+}
+
+# first polynomial: 1 + 2x + 3x^2
+a = [1, 2, 3];
+
+# second polynomial: 4 + 5x + 6x^2
+b = [4, 5, 6];
+
+# expected result:
+# (1 + 2x + 3x^2)(4 + 5x + 6x^2)
+# = 4 + 13x + 28x^2 + 27x^3 + 18x^4
+print(polymul(a, b));
