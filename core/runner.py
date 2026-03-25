@@ -11,6 +11,8 @@ from rich.pretty import pprint
 from core.parser import *
 
 ops: dict[str, Callable[[Any, Any], Any] | Callable[[Any], Any]] = {
+    'and': lambda x, y: x and y,
+    'or': lambda x, y: x or y,
     '+': operator.add,
     '-': operator.sub,
     '*': operator.mul,
@@ -57,8 +59,13 @@ class runner:  # NOQA: N801
         })()
         self._stack: list[dict] = [{
             'print': cprint,
+            'pprint': pprint,
             'range': range,
+            'bool': bool,
+            'str': str,
             'int': int,
+            'float': float,
+            'complex': complex,
             'len': len,
             'null': self.null,
             'true': True,
@@ -79,8 +86,10 @@ class runner:  # NOQA: N801
             self._stack.pop()
 
     def mkcaller(self, node: ArrowFunction | Function) -> Callable[..., Any]:
+        namespace: dict[str, Any] = self.namespace.copy() if len(self._stack) > 1 else {}  # keep alive for nested functions
         def caller(*varargs: Any) -> Any:
             with self.calling():
+                self.namespace.update(namespace)
                 if len(varargs) < sum(param.default is None for param in node.params):
                     raise TypeError(f'Expected {len(node.params)} arguments, got {len(varargs)}')
                 for vararg, param in zip(varargs, node.params):
@@ -148,6 +157,8 @@ class runner:  # NOQA: N801
                 object: Any = self.exec(node.object)
                 match node.target:
                     case Name():
+                        if node.target.id in {'null', 'true', 'false'}:
+                            raise TypeError(f'cannot assign to {node.target.id!r}')
                         if node.op == '=':
                             self.namespace[node.target.id] = object
                         else:
