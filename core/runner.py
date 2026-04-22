@@ -1,8 +1,8 @@
 import math
 import operator
 from collections.abc import Callable, Generator
-from contextlib import contextmanager
 from dataclasses import dataclass
+from contextlib import contextmanager
 from functools import cache
 from typing import Any
 

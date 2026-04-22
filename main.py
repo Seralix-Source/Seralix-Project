@@ -1,6 +1,10 @@
 from core.runner import runner
 
-with open('src/main.slx') as stream:
-    source: str = stream.read()
+with open('src/fft.slx') as stream:
+    print("RUNNING FFT")
+    runner(stream.read()).run()
 
-runner(source).run()
+
+with open('src/ntt.slx') as stream:
+    print("RUNNING NTT")
+    runner(stream.read()).run()

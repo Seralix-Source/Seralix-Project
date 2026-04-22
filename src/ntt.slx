@@ -1,0 +1,140 @@
+# =========================================
+# Modular exponentiation
+# Computes (base^exp) % mod efficiently
+# =========================================
+function powmod(base, exp, mod) {
+    result = 1;
+    base %= mod;
+
+    while exp > 0 {
+        if int(exp) & 1 {
+            result = (result * base) % mod;
+        }
+
+        base = (base * base) % mod;
+        exp = int(exp) >> 1;
+    }
+
+    return result;
+}
+
+# =========================================
+# Modular inverse using Fermat
+# Only valid because mod is prime
+# =========================================
+function inv(x, mod) {
+    return powmod(x, mod - 2, mod);
+}
+
+# =========================================
+# Recursive Number Theoretic Transform
+# Works like FFT but in Z_p (exact arithmetic)
+# =========================================
+function ntt(a, invert=false, mod=998244353, g=3) {
+    n = len(a);
+
+    if n == 1 {
+        return [a[0]];
+    }
+
+    # Split even / odd
+    even = ntt(a[0::2], invert, mod, g);
+    odd = ntt(a[1::2], invert, mod, g);
+
+    # Compute primitive n-th root of unity:
+    # w = g^((mod-1)/n) mod mod
+    root = powmod(g, (mod - 1) / n, mod);
+
+    if invert {
+        root = inv(root, mod);
+    }
+
+    w = 1;
+    y = [0] * n;
+
+    k = 0;
+    while k < (n >> 1) {
+        u = even[k];
+        v = (w * odd[k]) % mod;
+
+        # Butterfly operations
+        y[k] = (u + v) % mod;
+        y[k + (n >> 1)] = (u - v + mod) % mod;
+
+        w = (w * root) % mod;
+        k += 1;
+    }
+
+    return y;
+}
+
+# =========================================
+# Next power of 2 (needed for transform)
+# =========================================
+function next_pow2(n) {
+    size = 1;
+    while size < n {
+        size <<= 1;
+    }
+    return size;
+}
+
+# =========================================
+# Polynomial multiplication using NTT
+# EXACT (no floating errors)
+# =========================================
+function polymul_ntt(a, b, mod=998244353, g=3) {
+    needed = len(a) + len(b) - 1;
+    n = next_pow2(needed);
+
+    # Padding
+    while len(a) < n {
+        a = a + [0];
+    }
+
+    while len(b) < n {
+        b = b + [0];
+    }
+
+    # Forward transform
+    fa = ntt(a, false, mod, g);
+    fb = ntt(b, false, mod, g);
+
+    # Pointwise multiplication
+    i = 0;
+    while i < n {
+        fa[i] = (fa[i] * fb[i]) % mod;
+        i += 1;
+    }
+
+    # Inverse transform
+    result = ntt(fa, true, mod, g);
+
+    inv_n = inv(n, mod);
+
+    # Normalize
+    i = 0;
+    while i < n {
+        result[i] = (result[i] * inv_n) % mod;
+        i += 1;
+    }
+
+    # Trim result
+    out = [];
+    i = 0;
+    while i < needed {
+        out = out + [result[i]];
+        i += 1;
+    }
+
+    return out;
+}
+
+# =========================================
+# Example (same idea as your FFT file)
+# =========================================
+
+a = [1, 2, 3];
+b = [4, 5, 6];
+
+print(polymul_ntt(a, b));
