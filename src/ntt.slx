@@ -42,7 +42,7 @@ function ntt(a, invert=false, mod=998244353, g=3) {
     odd = ntt(a[1::2], invert, mod, g);
 
     # Compute primitive n-th root of unity:
-    # w = g^((mod-1)/n) mod mod
+    # w = g ^ ((mod - 1) / n) mod mod
     root = powmod(g, (mod - 1) / n, mod);
 
     if invert {

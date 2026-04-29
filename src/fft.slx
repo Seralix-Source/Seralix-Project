@@ -1,130 +1,209 @@
 # returns the smallest power of two greater than or equal to n
-# fft-based polynomial multiplication works most naturally when the size is a power of two
 function next_pow2(n) {
-    # start from 1 and keep doubling until the size is enough
     size = 1;
-
-    # if size is still smaller than n, double it with a left shift
     while size < n {
         size <<= 1;
     }
-
-    # return the computed power-of-two size
     return size;
 }
 
-# computes the recursive fast fourier transform of a
-# if invert is true, this acts as the inverse fft except for the final division by n
-function fft(a, invert=false) {
-    # n is the current sequence length
+# ============================================================
+# exact arithmetic in Z[w] where w is a primitive 8th root
+# of unity, so w^4 = -1 and w^8 = 1
+#
+# representation:
+# [a, b, c, d] = a + b*w + c*w^2 + d*w^3
+# ============================================================
+
+function z8_zero() {
+    return [0, 0, 0, 0];
+}
+
+function z8_from_int(x) {
+    return [x, 0, 0, 0];
+}
+
+function z8_add(x, y) {
+    return [
+        x[0] + y[0],
+        x[1] + y[1],
+        x[2] + y[2],
+        x[3] + y[3]
+    ];
+}
+
+function z8_sub(x, y) {
+    return [
+        x[0] - y[0],
+        x[1] - y[1],
+        x[2] - y[2],
+        x[3] - y[3]
+    ];
+}
+
+function z8_div_int(x, n) {
+    return [
+        x[0] / n,
+        x[1] / n,
+        x[2] / n,
+        x[3] / n
+    ];
+}
+
+# multiply two elements modulo w^4 = -1
+function z8_mul(x, y) {
+    c0 = 0;
+    c1 = 0;
+    c2 = 0;
+    c3 = 0;
+    c4 = 0;
+    c5 = 0;
+    c6 = 0;
+
+    c0 = x[0] * y[0];
+    c1 = x[0] * y[1] + x[1] * y[0];
+    c2 = x[0] * y[2] + x[1] * y[1] + x[2] * y[0];
+    c3 = x[0] * y[3] + x[1] * y[2] + x[2] * y[1] + x[3] * y[0];
+    c4 = x[1] * y[3] + x[2] * y[2] + x[3] * y[1];
+    c5 = x[2] * y[3] + x[3] * y[2];
+    c6 = x[3] * y[3];
+
+    return [
+        c0 - c4,
+        c1 - c5,
+        c2 - c6,
+        c3
+    ];
+}
+
+function z8_pow(k) {
+    t = k % 8;
+
+    if t == 0 {
+        return [1, 0, 0, 0];
+    }
+
+    if t == 1 {
+        return [0, 1, 0, 0];
+    }
+
+    if t == 2 {
+        return [0, 0, 1, 0];
+    }
+
+    if t == 3 {
+        return [0, 0, 0, 1];
+    }
+
+    if t == 4 {
+        return [-1, 0, 0, 0];
+    }
+
+    if t == 5 {
+        return [0, -1, 0, 0];
+    }
+
+    if t == 6 {
+        return [0, 0, -1, 0];
+    }
+
+    return [0, 0, 0, -1];
+}
+
+function z8_inv_pow(k) {
+    return z8_pow((8 - (k % 8)) % 8);
+}
+
+function fft_exact(a, invert=false) {
     n = len(a);
 
-    # base case of the recursion
-    # a sequence of length 1 is already its own transform
     if n == 1 {
         return [a[0]];
     }
 
-    # recursively transform the even-indexed coefficients
-    even = fft(a[0::2], invert);
+    even = fft_exact(a[0::2], invert);
+    odd = fft_exact(a[1::2], invert);
 
-    # recursively transform the odd-indexed coefficients
-    odd = fft(a[1::2], invert);
-
-    # compute the principal angle for this stage
-    # for inverse fft we flip the sign of the angle
-    angle = 2 * pi / n;
-    if invert {
-        angle = -angle;
+    y = [];
+    i = 0;
+    while i < n {
+        y = y + [z8_zero()];
+        i += 1;
     }
 
-    # wn is the primitive n-th root of unity for this stage
-    wn = cis(angle);
-
-    # w starts at 1 and is multiplied by wn each iteration
-    # this generates successive powers of the root of unity
-    w = 1;
-
-    # allocate the output sequence for this stage
-    y = [0] * n;
-
-    # iterate over the first half and build both halves of the result
+    half = n >> 1;
     k = 0;
-    while k < (n >> 1) {
-        # butterfly combination
-        y[k] = even[k] + w * odd[k];
-        y[k + (n >> 1)] = even[k] - w * odd[k];
 
-        # move to the next root-of-unity power
-        w *= wn;
+    while k < half {
+        step = 8 / n;
+
+        if invert {
+            wk = z8_inv_pow(step * k);
+        } else {
+            wk = z8_pow(step * k);
+        }
+
+        t = z8_mul(wk, odd[k]);
+
+        y[k] = z8_add(even[k], t);
+        y[k + half] = z8_sub(even[k], t);
+
         k += 1;
     }
 
-    # return the transformed sequence
     return y;
 }
 
-# multiplies two polynomials represented as coefficient arrays
-# for example [1, 2, 3] means 1 + 2x + 3x^2
-function polymul(a, b) {
-    # the resulting polynomial degree is deg(a) + deg(b)
-    # so the coefficient count is len(a) + len(b) - 1
+function polymul_fft(a, b) {
     needed = len(a) + len(b) - 1;
-
-    # choose the fft size as the next power of two
     n = next_pow2(needed);
 
-    # pad a with zeros until its length reaches n
     while len(a) < n {
         a = a + [0];
     }
 
-    # pad b with zeros until its length reaches n
     while len(b) < n {
         b = b + [0];
     }
 
-    # transform both polynomials into point-value form
-    fa = fft(a);
-    fb = fft(b);
+    aa = [];
+    bb = [];
 
-    # multiply the transformed values pointwise
     i = 0;
     while i < n {
-        fa[i] *= fb[i];
+        aa = aa + [z8_from_int(a[i])];
+        bb = bb + [z8_from_int(b[i])];
         i += 1;
     }
 
-    # apply inverse fft to come back to coefficient form
-    result = fft(fa, true);
+    fa = fft_exact(aa);
+    fb = fft_exact(bb);
 
-    # normalize by dividing every coefficient by n
     i = 0;
     while i < n {
-        result[i] /= n;
+        fa[i] = z8_mul(fa[i], fb[i]);
         i += 1;
     }
 
-    # extract only the needed number of coefficients
-    # round the real part because floating-point fft can introduce tiny numeric errors
+    result = fft_exact(fa, true);
+
+    i = 0;
+    while i < n {
+        result[i] = z8_div_int(result[i], n);
+        i += 1;
+    }
+
     out = [];
     i = 0;
     while i < needed {
-        out = out + [round(result[i].real)];
+        out = out + [int(result[i][0])];
         i += 1;
     }
 
-    # return the final coefficient list
     return out;
 }
 
-# first polynomial: 1 + 2x + 3x^2
 a = [1, 2, 3];
-
-# second polynomial: 4 + 5x + 6x^2
 b = [4, 5, 6];
 
-# expected result:
-# (1 + 2x + 3x^2)(4 + 5x + 6x^2)
-# = 4 + 13x + 28x^2 + 27x^3 + 18x^4
-print(polymul(a, b));
+print(polymul_fft(a, b));
