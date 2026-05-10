@@ -228,7 +228,10 @@ class runner:  # NOQA: N801
                     elif isinstance(node.target, MemberAccess):
                         setattr(self._run_node(node.target.target), node.target.member, self._run_node(node.object))
                     elif isinstance(node.target, SubscriptAccess):
-                        self._run_node(node.target.target).__setitem__(*map(lambda expr: self._run_node(expr), node.target.subscript), self._run_node(node.object))
+                        if len(node.target.subscript) == 1:
+                            self._run_node(node.target.target).__setitem__(self._run_node(node.target.subscript[0]), self._run_node(node.object))  # type: ignore[attr-defined]
+                        else:
+                            self._run_node(node.target.target).__setitem__(tuple(lambda expr: self._run_node(expr), node.target.subscript), self._run_node(node.object))  # type: ignore[attr-defined]
                     else:
                         raise TypeError(f"cannot assign to {type(node.target).__name__}")
                 else:
@@ -254,7 +257,9 @@ class runner:  # NOQA: N801
             case MemberAccess():
                 return getattr(self._run_node(node.target), node.member)
             case SubscriptAccess():
-                return self._run_node(node.target).__getitem__(*map(lambda expr: self._run_node(expr), node.subscript))  # type: ignore[attr-defined]
+                if len(node.subscript) == 1:
+                    return self._run_node(node.target).__getitem__(self._run_node(node.subscript[0]))  # type: ignore[attr-defined]
+                return self._run_node(node.target).__getitem__(tuple(lambda expr: self._run_node(expr), node.subscript))  # type: ignore[attr-defined]
             case SubscriptAccess.Slice():
                 return slice(self._run_node(node.start), self._run_node(node.stop), self._run_node(node.step))  # type: ignore[arg-type]
             case Call():
