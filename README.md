@@ -304,7 +304,7 @@ Parentheses can be used to control evaluation order.
 
 ---
 
-### Member Access
+### MemberAccess Access
 
 ```slx
 obj.value
@@ -501,7 +501,7 @@ add            + -
 shift          << >>
 bitwise        & ^ |
 comparison     == != < <= > >=
-boolean        and or
+bool        and or
 ternary        ? :
 arrow          ->
 ```
@@ -680,7 +680,7 @@ This is useful for function calls with side effects.
 
 ---
 
-# 13.3 If / Elif / Else
+# 13.3 IfThen / Elif / Else
 
 Conditional branching is supported using a Python-like style, but with **mandatory braces**.
 
@@ -787,7 +787,7 @@ function square(x) {
 
 # 14. Built-In Runtime Values
 
-The prototype includes a small built-in runtime environment.
+The prototype includes a small built-in runtime environ.
 
 Current built-ins include:
 

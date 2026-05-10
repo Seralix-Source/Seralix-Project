@@ -1,0 +1,637 @@
+# ─────────────────────────────────────────────
+# Integer utilities
+# ─────────────────────────────────────────────
+
+function gcd(x, y) {
+    for i in range(x + y) {
+        if y == 0 { return x; }
+        temp = y;
+        y = x % y;
+        x = temp;
+    }
+    return x;
+}
+
+function lcm(x, y) {
+    return x * y / gcd(x, y);
+}
+
+function coprime(x, y) {
+    return gcd(x, y) == 1;
+}
+
+function totient(n) {
+    result = n;
+    p = 2;
+    temp = n;
+    for i in range(n) {
+        if temp % p == 0 {
+            while temp % p == 0 {
+                temp = temp // p;
+            }
+            result = result - result // p;
+        }
+        p = p + 1;
+        if p * p > temp {
+            if temp > 1 {
+                result = result - result // temp;
+            }
+            return result;
+        }
+    }
+    return result;
+}
+
+function mobius(n) {
+    if n == 1 { return 1; }
+    factors = 0;
+    p = 2;
+    temp = n;
+    for i in range(n) {
+        if temp % p == 0 {
+            factors = factors + 1;
+            temp = temp // p;
+            if temp % p == 0 { return 0; }
+        }
+        p = p + 1;
+        if p * p > temp {
+            if temp > 1 { factors = factors + 1; }
+            return (() -> (-1) ** factors)();
+        }
+    }
+    return (() -> (-1) ** factors)();
+}
+
+function divisors(n) {
+    result = [];
+    for i in range(1, n + 1) {
+        if n % i == 0 {
+            result = result + [i];
+        }
+    }
+    return result;
+}
+
+# Trial division up to sqrt
+function isPrime(n) {
+    if n < 2 { return false; }
+    if n == 2 { return true; }
+    if n % 2 == 0 { return false; }
+    p = 3;
+    for i in range(n) {
+        if p * p > n { return true; }
+        if n % p == 0 { return false; }
+        p = p + 2;
+    }
+    return true;
+}
+
+function isqrt(n) {
+    if n < 0 { return null; }
+    if n == 0 { return 0; }
+    x = n;
+    for i in range(n) {
+        nx = (x + n // x) // 2;
+        if nx >= x { return x; }
+        x = nx;
+    }
+    return x;
+}
+
+# Modular exponentiation: x^k mod m
+function modpow(x, k, m) {
+    result = 1;
+    x = x % m;
+    for i in range(64) {
+        if k == 0 { return result; }
+        if k % 2 == 1 { result = result * x % m; }
+        x = x * x % m;
+        k = k // 2;
+    }
+    return result;
+}
+
+# Extended GCD: returns [g, s, t] where s*x + t*y = g
+function xgcd(x, y) {
+    if y == 0 { return [x, 1, 0]; }
+    rec = xgcd(y, x % y);
+    g = rec[0];
+    s = rec[2];
+    t = rec[1] - (x // y) * rec[2];
+    return [g, s, t];
+}
+
+# Modular inverse via xgcd (works for any m)
+function modinv(x, m) {
+    rec = xgcd(x % m, m);
+    if rec[0] != 1 { return null; }
+    return rec[1] % m;
+}
+
+# Modular inverse via Fermat (only for prime m)
+function modinv_prime(x, m) {
+    return modpow(x, m - 2, m);
+}
+
+function crt(r1, m1, r2, m2) {
+    rec = xgcd(m1, m2);
+    if (r2 - r1) % rec[0] != 0 { return null; }
+    lcm_ = lcm(m1, m2);
+    x = (r1 + m1 * ((r2 - r1) // rec[0]) * rec[1]) % lcm_;
+    return x;
+}
+
+
+# ─────────────────────────────────────────────
+# Polynomial utilities
+# ─────────────────────────────────────────────
+
+function polyadd(xs, ys) {
+    long  = xs;
+    short = ys;
+    if len(ys) > len(xs) {
+        long  = ys;
+        short = xs;
+    }
+    result = [];
+    for i in range(len(long)) {
+        if i < len(short)  { result = result + [long[i] + short[i]]; }
+        if i >= len(short) { result = result + [long[i]]; }
+    }
+    return result;
+}
+
+function polysub(xs, ys) {
+    neg = [];
+    for i in range(len(ys)) { neg = neg + [-ys[i]]; }
+    return polyadd(xs, neg);
+}
+
+function polyscale(xs, k) {
+    result = [];
+    for i in range(len(xs)) { result = result + [xs[i] * k]; }
+    return result;
+}
+
+function polymul(xs, ys) {
+    result = [];
+    for i in range(len(xs) + len(ys) - 1) { result = result + [0]; }
+    for i in range(len(xs)) {
+        for j in range(len(ys)) {
+            result[i + j] = result[i + j] + xs[i] * ys[j];
+        }
+    }
+    return result;
+}
+
+function polystrip(xs) {
+    last = 0;
+    for i in range(len(xs)) {
+        if xs[i] != 0 { last = i; }
+    }
+    result = [];
+    for i in range(last + 1) { result = result + [xs[i]]; }
+    return result;
+}
+
+function polydeg(xs) {
+    xs = polystrip(xs);
+    return len(xs) - 1;
+}
+
+function polydivmod(xs, ys) {
+    result = [];
+    for i in range(len(xs)) { result = result + [xs[i]]; }
+    deg_xs = polydeg(xs);
+    deg_ys = polydeg(ys);
+    quotient = [];
+    for i in range(deg_xs - deg_ys + 1) { quotient = quotient + [0]; }
+    for i in range(deg_xs - deg_ys + 1) {
+        coeff = result[deg_xs - i] // ys[deg_ys];
+        quotient[deg_xs - deg_ys - i] = coeff;
+        for j in range(deg_ys + 1) {
+            result[deg_xs - i - deg_ys + j] = result[deg_xs - i - deg_ys + j] - coeff * ys[j];
+        }
+    }
+    remainder = [];
+    for i in range(deg_ys) { remainder = remainder + [result[i]]; }
+    return [polystrip(quotient), polystrip(remainder)];
+}
+
+function polygcd(xs, ys) {
+    for i in range(len(xs) + len(ys)) {
+        if len(polystrip(ys)) == 0 { return polystrip(xs); }
+        temp = ys;
+        ys = polydivmod(xs, ys)[1];
+        xs = temp;
+    }
+    return polystrip(xs);
+}
+
+function polyeval(xs, k) {
+    result = 0;
+    for i in range(len(xs)) { result = result + xs[i] * k ** i; }
+    return result;
+}
+
+
+# ─────────────────────────────────────────────
+# Cyclotomic integers Z[omega_n]
+# ─────────────────────────────────────────────
+
+record CyclotomicInt(n, coeffs);
+
+function cyclo(n) {
+    result = [1];
+    divs = divisors(n);
+    for i in range(len(divs)) {
+        d = divs[i];
+        mu = mobius(n // d);
+        if mu != 0 {
+            xd = [];
+            for j in range(d + 1) { xd = xd + [0]; }
+            xd[0] = -1;
+            xd[d] = 1;
+            if mu == 1  { result = polymul(result, xd); }
+            if mu == -1 { result = polydivmod(result, xd)[0]; }
+        }
+    }
+    return result;
+}
+
+function creduce(n, coeffs) {
+    return polydivmod(coeffs, cyclo(n))[1];
+}
+
+function czero(n) {
+    deg = totient(n);
+    coeffs = [];
+    for i in range(deg) { coeffs = coeffs + [0]; }
+    return CyclotomicInt(n, coeffs);
+}
+
+function cone(n) {
+    z = czero(n);
+    z.coeffs[0] = 1;
+    return z;
+}
+
+function comega(n) {
+    z = czero(n);
+    z.coeffs[1] = 1;
+    return z;
+}
+
+function cfromInt(n, k) {
+    z = czero(n);
+    z.coeffs[0] = k;
+    return z;
+}
+
+function cadd(x, y) {
+    return CyclotomicInt(x.n, polyadd(x.coeffs, y.coeffs));
+}
+
+function csub(x, y) {
+    return CyclotomicInt(x.n, polysub(x.coeffs, y.coeffs));
+}
+
+function cneg(x) {
+    return CyclotomicInt(x.n, polyscale(x.coeffs, -1));
+}
+
+function cscale(x, k) {
+    return CyclotomicInt(x.n, polyscale(x.coeffs, k));
+}
+
+function cmul(x, y) {
+    return CyclotomicInt(x.n, creduce(x.n, polymul(x.coeffs, y.coeffs)));
+}
+
+function cpow(x, k) {
+    if k == 0 { return cone(x.n); }
+    if k == 1 { return x; }
+    if k % 2 == 0 {
+        half = cpow(x, k // 2);
+        return cmul(half, half);
+    }
+    return cmul(x, cpow(x, k - 1));
+}
+
+function cgalois(x, k) {
+    ok = cpow(comega(x.n), k);
+    result = czero(x.n);
+    current = cone(x.n);
+    for i in range(len(x.coeffs)) {
+        result = cadd(result, cscale(current, x.coeffs[i]));
+        current = cmul(current, ok);
+    }
+    return result;
+}
+
+function cconj(x) {
+    return cgalois(x, x.n - 1);
+}
+
+function cnorm(x) {
+    result = cone(x.n);
+    for k in range(1, x.n + 1) {
+        if coprime(k, x.n) {
+            result = cmul(result, cgalois(x, k));
+        }
+    }
+    return result.coeffs[0];
+}
+
+function ctrace(x) {
+    result = 0;
+    for k in range(1, x.n + 1) {
+        if coprime(k, x.n) {
+            result = result + cgalois(x, k).coeffs[0];
+        }
+    }
+    return result;
+}
+
+function ceq(x, y) {
+    xs = polystrip(x.coeffs);
+    ys = polystrip(y.coeffs);
+    if len(xs) != len(ys) { return false; }
+    for i in range(len(xs)) {
+        if xs[i] != ys[i] { return false; }
+    }
+    return true;
+}
+
+function cisZero(x)     { return ceq(x, czero(x.n)); }
+function cisUnit(x)     { n = cnorm(x); return n == 1 or n == -1; }
+function cdeg(x)        { return polydeg(x.coeffs); }
+function ctoList(x)     { return x.coeffs; }
+
+function cdivisible(x, k) {
+    for i in range(len(x.coeffs)) {
+        if x.coeffs[i] % k != 0 { return false; }
+    }
+    return true;
+}
+
+function cdivInt(x, k) {
+    result = [];
+    for i in range(len(x.coeffs)) { result = result + [x.coeffs[i] // k]; }
+    return CyclotomicInt(x.n, result);
+}
+
+function cmodInt(x, k) {
+    result = [];
+    for i in range(len(x.coeffs)) { result = result + [x.coeffs[i] % k]; }
+    return CyclotomicInt(x.n, result);
+}
+
+function ceqMod(x, y, k) {
+    return cisZero(cmodInt(csub(x, y), k));
+}
+
+
+# ─────────────────────────────────────────────
+# NTT
+#
+# Core insight: for a prime m with primitive root g,
+# the primitive n-th root of unity is w = g^{(m-1)/n} mod m,
+# provided n | (m-1). No root search needed — one modpow.
+#
+# For arbitrary n: find a prime of the form k*n+1, then
+# derive the root the same way.
+# ─────────────────────────────────────────────
+
+MOD       = 998244353;   # 119 * 2^23 + 1
+PRIM_ROOT = 3;           # primitive root of MOD
+
+# True if m supports n-th roots of unity
+function ntt_supports(n, m) {
+    return (m - 1) % n == 0;
+}
+
+# Primitive n-th root of unity mod m from primitive root g — one modpow, no search
+function ntt_root(n, m, g) {
+    return modpow(g, (m - 1) // n, m);
+}
+
+# Find prime of the form k*n+1 >= min_val, plus a primitive root of that prime
+# Tries g=2,3,5,6,7,10,11 as primitive root candidates (covers virtually all cases)
+function ntt_find_prime_and_root(n, min_val) {
+    k = min_val // n + 1;
+    candidates = [2, 3, 5, 6, 7, 10, 11, 13, 17, 19];
+    for i in range(100000) {
+        m = k * n + 1;
+        if isPrime(m) {
+            for ci in range(len(candidates)) {
+                g = candidates[ci];
+                # g is primitive root of m iff g^{(m-1)/2} != 1 mod m
+                # (sufficient check when m-1 = k*n and we only care about n-th roots)
+                if modpow(g, (m - 1) // 2, m) != 1 {
+                    if n > 2 {
+                        if modpow(g, (m - 1) // n, m) != 1 {
+                            return [m, g];
+                        }
+                    }
+                    if n <= 2 { return [m, g]; }
+                }
+            }
+        }
+        k = k + 1;
+    }
+    return null;
+}
+
+# Get [m, w] where w is the primitive sz-th root of unity mod m
+# Uses MOD when possible; finds a new prime otherwise
+function ntt_params_for(sz) {
+    if ntt_supports(sz, MOD) {
+        return [MOD, ntt_root(sz, MOD, PRIM_ROOT)];
+    }
+    found = ntt_find_prime_and_root(sz, 1 << 20);
+    if found == null { return null; }
+    m = found[0];
+    g = found[1];
+    return [m, ntt_root(sz, m, g)];
+}
+
+# Next power of 2 >= n
+function next_pow2(n) {
+    p = 1;
+    for i in range(64) {
+        if p >= n { return p; }
+        p = p * 2;
+    }
+    return p;
+}
+
+# Pad xs to length sz with zeros
+function pad(xs, sz) {
+    result = [];
+    for i in range(sz) {
+        if i < len(xs)  { result = result + [xs[i]]; }
+        if i >= len(xs) { result = result + [0]; }
+    }
+    return result;
+}
+
+# Bit-reverse permutation
+function bitrev(xs) {
+    n = len(xs);
+    result = [];
+    for i in range(n) { result = result + [xs[i]]; }
+
+    bits = 0;
+    temp = n;
+    for i in range(32) {
+        temp = temp >> 1;
+        if temp > 0 { bits = bits + 1; }
+    }
+
+    for i in range(n) {
+        j = 0;
+        x = i;
+        for b in range(bits) {
+            j = j << 1;
+            j = j | (x & 1);
+            x = x >> 1;
+        }
+        if j > i {
+            tmp = result[i];
+            result[i] = result[j];
+            result[j] = tmp;
+        }
+    }
+    return result;
+}
+
+# Core Cooley-Tukey butterfly
+# w = primitive sz-th root of unity mod m (sz = len(xs), must be power of 2)
+# invert=0 forward, invert=1 inverse
+function ntt_core(xs, invert, w, m) {
+    n = len(xs);
+    result = bitrev(xs);
+
+    if invert == 1 {
+        w = modinv_prime(w, m);
+    }
+
+    length = 2;
+    for i in range(32) {
+        if length <= n {
+            # primitive length-th root = w^{n/length}
+            w_len = modpow(w, n // length, m);
+            j = 0;
+            for k in range(n // length) {
+                ww = 1;
+                for l in range(length // 2) {
+                    u = result[j + l];
+                    v = result[j + l + length // 2] * ww % m;
+                    result[j + l]               = (u + v) % m;
+                    result[j + l + length // 2] = (u - v + m) % m;
+                    ww = ww * w_len % m;
+                }
+                j = j + length;
+            }
+            length = length * 2;
+        }
+    }
+
+    if invert == 1 {
+        inv_n = modinv_prime(n, m);
+        for i in range(n) {
+            result[i] = result[i] * inv_n % m;
+        }
+    }
+
+    return result;
+}
+
+
+# ─────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────
+
+# Standard NTT multiplication using MOD and PRIM_ROOT
+function polymul_ntt(xs, ys) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+    w  = ntt_root(sz, MOD, PRIM_ROOT);
+
+    xa = ntt_core(pad(xs, sz), 0, w, MOD);
+    ya = ntt_core(pad(ys, sz), 0, w, MOD);
+
+    za = [];
+    for i in range(sz) { za = za + [xa[i] * ya[i] % MOD]; }
+
+    result = ntt_core(za, 1, w, MOD);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+# NTT multiplication with explicit prime m and its primitive root g
+function polymul_ntt_params(xs, ys, m, g) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+    w  = ntt_root(sz, m, g);
+
+    xa = ntt_core(pad(xs, sz), 0, w, m);
+    ya = ntt_core(pad(ys, sz), 0, w, m);
+
+    za = [];
+    for i in range(sz) { za = za + [xa[i] * ya[i] % m]; }
+
+    result = ntt_core(za, 1, w, m);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+# NTT multiplication using an arbitrary n-th root of unity
+# n = which root of unity to use (must be >= transform size and a power of 2,
+# or will be rounded up to the next valid multiple)
+# Pass n=0 to auto-select minimal transform size
+function polymul_ntt_arbitrary(xs, ys, n) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+
+    # n must be a power-of-2 multiple of sz
+    if n < sz { n = sz; }
+    if n % sz != 0 { n = sz * (n // sz + 1); }
+
+    params = ntt_params_for(n);
+    if params == null { return null; }
+    m   = params[0];
+    w_n = params[1];   # primitive n-th root of unity mod m
+
+    # derive primitive sz-th root: w_n^{n/sz}
+    w_sz = modpow(w_n, n // sz, m);
+
+    xa = ntt_core(pad(xs, sz), 0, w_sz, m);
+    ya = ntt_core(pad(ys, sz), 0, w_sz, m);
+
+    za = [];
+    for i in range(sz) { za = za + [xa[i] * ya[i] % m]; }
+
+    result = ntt_core(za, 1, w_sz, m);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+
+# ─────────────────────────────────────────────
+# Tests — all should print [4, 13, 28, 27, 18]
+# ─────────────────────────────────────────────
+
+a = [1, 2, 3];
+b = [4, 5, 6];
+
+pprint(polymul_ntt(a, b));
+pprint(polymul_ntt_arbitrary(a, b, 8));
+pprint(polymul_ntt_arbitrary(a, b, 16));

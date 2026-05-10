@@ -1,10 +1,9 @@
-from core.runner import runner
+import slx.runner
 
-with open('src/fft.slx') as stream:
-    print("RUNNING FFT")
-    runner(stream.read()).run()
-
-
-with open('src/ntt.slx') as stream:
-    print("RUNNING NTT")
-    runner(stream.read()).run()
+if __name__ == '__main__':
+    with open('src/fft.slx') as stream:
+        slx.runner.run(stream.read())
+    with open('src/ntt.slx') as stream:
+        slx.runner.run(stream.read())
+    with open('src/ntt-updated.slx') as stream:
+        slx.runner.run(stream.read())
