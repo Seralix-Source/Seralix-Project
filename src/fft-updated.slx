@@ -1,0 +1,620 @@
+# ─────────────────────────────────────────────
+# Integer utilities (same as ntt-updated.slx)
+# ─────────────────────────────────────────────
+
+function gcd(x, y) {
+    for i in range(x + y) {
+        if y == 0 { return x; }
+        temp = y;
+        y = x % y;
+        x = temp;
+    }
+    return x;
+}
+
+function lcm(x, y) {
+    return x * y / gcd(x, y);
+}
+
+function coprime(x, y) {
+    return gcd(x, y) == 1;
+}
+
+function totient(n) {
+    result = n;
+    p = 2;
+    temp = n;
+    for i in range(n) {
+        if temp % p == 0 {
+            while temp % p == 0 {
+                temp = temp // p;
+            }
+            result = result - result // p;
+        }
+        p = p + 1;
+        if p * p > temp {
+            if temp > 1 {
+                result = result - result // temp;
+            }
+            return result;
+        }
+    }
+    return result;
+}
+
+function divisors(n) {
+    result = [];
+    for i in range(1, n + 1) {
+        if n % i == 0 {
+            result = result + [i];
+        }
+    }
+    return result;
+}
+
+function isPrime(n) {
+    if n < 2 { return false; }
+    if n == 2 { return true; }
+    if n % 2 == 0 { return false; }
+    p = 3;
+    for i in range(n) {
+        if p * p > n { return true; }
+        if n % p == 0 { return false; }
+        p = p + 2;
+    }
+    return true;
+}
+
+function isqrt(n) {
+    if n < 0 { return null; }
+    if n == 0 { return 0; }
+    x = n;
+    for i in range(n) {
+        nx = (x + n // x) // 2;
+        if nx >= x { return x; }
+        x = nx;
+    }
+    return x;
+}
+
+function modpow(x, k, m) {
+    result = 1;
+    x = x % m;
+    for i in range(64) {
+        if k == 0 { return result; }
+        if k % 2 == 1 { result = result * x % m; }
+        x = x * x % m;
+        k = k // 2;
+    }
+    return result;
+}
+
+function xgcd(x, y) {
+    if y == 0 { return [x, 1, 0]; }
+    rec = xgcd(y, x % y);
+    g = rec[0];
+    s = rec[2];
+    t = rec[1] - (x // y) * rec[2];
+    return [g, s, t];
+}
+
+function modinv(x, m) {
+    rec = xgcd(x % m, m);
+    if rec[0] != 1 { return null; }
+    return rec[1] % m;
+}
+
+function modinv_prime(x, m) {
+    return modpow(x, m - 2, m);
+}
+
+
+# ─────────────────────────────────────────────
+# Polynomial utilities (same as ntt-updated.slx)
+# ─────────────────────────────────────────────
+
+function polyadd(xs, ys) {
+    long  = xs;
+    short = ys;
+    if len(ys) > len(xs) {
+        long  = ys;
+        short = xs;
+    }
+    result = [];
+    for i in range(len(long)) {
+        if i < len(short)  { result = result + [long[i] + short[i]]; }
+        if i >= len(short) { result = result + [long[i]]; }
+    }
+    return result;
+}
+
+function polysub(xs, ys) {
+    neg = [];
+    for i in range(len(ys)) { neg = neg + [-ys[i]]; }
+    return polyadd(xs, neg);
+}
+
+function polyscale(xs, k) {
+    result = [];
+    for i in range(len(xs)) { result = result + [xs[i] * k]; }
+    return result;
+}
+
+function polymul(xs, ys) {
+    result = [];
+    for i in range(len(xs) + len(ys) - 1) { result = result + [0]; }
+    for i in range(len(xs)) {
+        for j in range(len(ys)) {
+            result[i + j] = result[i + j] + xs[i] * ys[j];
+        }
+    }
+    return result;
+}
+
+function polystrip(xs) {
+    last = 0;
+    for i in range(len(xs)) {
+        if xs[i] != 0 { last = i; }
+    }
+    result = [];
+    for i in range(last + 1) { result = result + [xs[i]]; }
+    return result;
+}
+
+function polydeg(xs) {
+    xs = polystrip(xs);
+    return len(xs) - 1;
+}
+
+function polydivmod(xs, ys) {
+    result = [];
+    for i in range(len(xs)) { result = result + [xs[i]]; }
+    deg_xs = polydeg(xs);
+    deg_ys = polydeg(ys);
+    quotient = [];
+    for i in range(deg_xs - deg_ys + 1) { quotient = quotient + [0]; }
+    for i in range(deg_xs - deg_ys + 1) {
+        coeff = result[deg_xs - i] // ys[deg_ys];
+        quotient[deg_xs - deg_ys - i] = coeff;
+        for j in range(deg_ys + 1) {
+            result[deg_xs - i - deg_ys + j] = result[deg_xs - i - deg_ys + j] - coeff * ys[j];
+        }
+    }
+    remainder = [];
+    for i in range(deg_ys) { remainder = remainder + [result[i]]; }
+    return [polystrip(quotient), polystrip(remainder)];
+}
+
+function polyeval(xs, k) {
+    result = 0;
+    for i in range(len(xs)) { result = result + xs[i] * k ** i; }
+    return result;
+}
+
+
+# ─────────────────────────────────────────────
+# Gaussian integers mod p: Z[i]/(p) where p = 1 mod 4
+#
+# A Gaussian integer is a pair [re, im] representing re + im*i
+# where i^2 = -1 mod p.
+#
+# Key insight: if p ≡ 1 mod 4, then -1 is a quadratic residue
+# mod p, so sqrt(-1) exists mod p. We find it once and use it
+# to represent i exactly — no floats anywhere.
+#
+# This lets us do exact complex arithmetic, and the FFT butterfly
+# uses Gaussian integer roots of unity instead of float e^{2πi/n}.
+# ─────────────────────────────────────────────
+
+# Gaussian integer arithmetic mod p — all exact integers
+
+function gauss_add(x, y, p) {
+    return [(x[0] + y[0]) % p, (x[1] + y[1]) % p];
+}
+
+function gauss_sub(x, y, p) {
+    return [(x[0] - y[0] + p) % p, (x[1] - y[1] + p) % p];
+}
+
+# (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+function gauss_mul(x, y, p) {
+    re = (x[0] * y[0] - x[1] * y[1]) % p;
+    im = (x[0] * y[1] + x[1] * y[0]) % p;
+    return [re, im];
+}
+
+# Conjugate: (a+bi)* = a-bi
+function gauss_conj(x, p) {
+    return [x[0], (p - x[1]) % p];
+}
+
+# Gaussian integer power via repeated squaring
+function gauss_pow(x, k, p) {
+    result = [1, 0];
+    for i in range(64) {
+        if k == 0 { return result; }
+        if k % 2 == 1 { result = gauss_mul(result, x, p); }
+        x = gauss_mul(x, x, p);
+        k = k // 2;
+    }
+    return result;
+}
+
+# Modular inverse of a Gaussian integer mod p
+# Uses: (a+bi)^{-1} = (a-bi) / (a^2+b^2) mod p
+function gauss_inv(x, p) {
+    norm = (x[0] * x[0] + x[1] * x[1]) % p;
+    inv_norm = modinv_prime(norm, p);
+    return [(x[0] * inv_norm) % p, ((p - x[1]) * inv_norm) % p];
+}
+
+# ─────────────────────────────────────────────
+# Finding sqrt(-1) mod p for p ≡ 1 mod 4
+#
+# Algorithm: find a quadratic non-residue g, then
+# sqrt(-1) = g^{(p-1)/4} mod p.
+# We try small candidates — for p ≡ 1 mod 4 about half
+# of all residues are non-residues, so this is fast.
+# ─────────────────────────────────────────────
+
+# Legendre symbol: 1 if x is QR mod p, -1 if NR, 0 if divisible
+function legendre(x, p) {
+    r = modpow(x % p, (p - 1) // 2, p);
+    if r == p - 1 { return -1; }
+    return r;
+}
+
+# Find sqrt(-1) mod p (requires p ≡ 1 mod 4)
+function sqrt_neg1(p) {
+    g = 2;
+    for i in range(p) {
+        if legendre(g, p) == -1 {
+            return modpow(g, (p - 1) // 4, p);
+        }
+        g = g + 1;
+    }
+    return null;
+}
+
+# ─────────────────────────────────────────────
+# Gaussian prime selection
+#
+# We need a prime p such that:
+#   1. p ≡ 1 mod 4  (so sqrt(-1) exists, giving us i)
+#   2. p ≡ 1 mod n  (so n-th roots of unity exist mod p)
+#   3. p is large enough that no coefficient overflows
+#
+# Both conditions collapse to: p ≡ 1 mod lcm(4, n)
+# ─────────────────────────────────────────────
+
+# Find prime p ≡ 1 mod lcm(4,n) >= min_val, plus its primitive root
+function fft_find_prime(n, min_val) {
+    step = lcm(4, n);
+    k = min_val // step + 1;
+    candidates = [2, 3, 5, 6, 7, 10, 11, 13, 17, 19];
+    for i in range(100000) {
+        p = k * step + 1;
+        if isPrime(p) {
+            for ci in range(len(candidates)) {
+                g = candidates[ci];
+                if modpow(g, (p - 1) // 2, p) != 1 {
+                    if n > 2 {
+                        if modpow(g, (p - 1) // n, p) != 1 {
+                            return [p, g];
+                        }
+                    }
+                    if n <= 2 { return [p, g]; }
+                }
+            }
+        }
+        k = k + 1;
+    }
+    return null;
+}
+
+# Get [p, i_mod_p, w] where:
+#   p     = Gaussian prime supporting n-th roots
+#   i_mod_p = sqrt(-1) mod p (exact representation of i)
+#   w     = primitive n-th Gaussian root of unity as [re, im] mod p
+function fft_params_for(n) {
+    # Default: try MOD = 998244353 = 119*2^23+1, which is 1 mod 4
+    MOD_FFT = 998244353;
+    PRIM_FFT = 3;
+    step = lcm(4, n);
+    if (MOD_FFT - 1) % step == 0 {
+        p = MOD_FFT;
+        g = PRIM_FFT;
+        i_mod_p = sqrt_neg1(p);
+        # primitive n-th root of unity mod p (real part only first)
+        w_real = modpow(g, (p - 1) // n, p);
+        # lift to Gaussian: w = cos(2pi/n) + i*sin(2pi/n)
+        # mod p this becomes the n-th root in Z[i]/(p)
+        # We compute it as g^{(p-1)/n} which lives in Z/pZ (real),
+        # but for true Gaussian roots we use the 4n-th root construction below
+        w = gauss_from_root(n, p, g, i_mod_p);
+        return [p, i_mod_p, w];
+    }
+    found = fft_find_prime(n, 1 << 20);
+    if found == null { return null; }
+    p = found[0];
+    g = found[1];
+    i_mod_p = sqrt_neg1(p);
+    w = gauss_from_root(n, p, g, i_mod_p);
+    return [p, i_mod_p, w];
+}
+
+# Construct the primitive n-th root of unity as a Gaussian integer mod p
+#
+# Strategy: the 4n-th root of unity in Z/pZ is r = g^{(p-1)/(4n)}.
+# Then r^n = g^{(p-1)/4} = sqrt(-1) = i mod p.
+# So the n-th root of unity in Z[i]/(p) is:
+#   w = r + 0*i  when viewed as element of Z[i] acting on itself
+# But we want w as a Gaussian integer [re, im] such that w^n = 1 in Z[i].
+# The cleanest construction: w = [r, 0] where r = g^{(p-1)/(4n)} mod p,
+# and verify w^n = [g^{(p-1)/4}, 0] = [sqrt(-1), 0] — but that's i, not 1.
+# So instead we use: w = g^{(p-1)/n} as a real element [w_real, 0],
+# which satisfies w^n = g^{p-1} = 1 mod p. This is a real n-th root.
+# For a truly complex Gaussian root, use the 2n-th real root r,
+# then w = [r, 0] has w^{2n} = 1, and w^n = g^{(p-1)/2} = -1 mod p,
+# so [r,0] is a 2n-th root. Combine with i to get the complex n-th root:
+#   w_complex = [r, 0] * [0, 1] ... only works for specific n.
+#
+# The simplest correct approach for integer FFT:
+# Use the REAL n-th root of unity mod p (no imaginary part needed)
+# and run the NTT butterfly — this is equivalent to the FFT but stays
+# in Z/pZ. The Gaussian structure only matters if you want to recover
+# actual complex outputs; for polynomial multiplication it's unnecessary.
+#
+# For TRUE Gaussian FFT (recovering complex outputs):
+# We work in Z[i]/(p) = Z/pZ x Z/pZ, representing each element as [re,im].
+# The primitive n-th root is w = [cos_n, sin_n] where these are
+# the discrete cosine/sine values mod p, computed via:
+#   cos_n = (w_real + w_real_inv) * inv2 mod p   (w_real = g^{(p-1)/n})
+#   sin_n = (w_real - w_real_inv) * inv2 * i_mod_p mod p
+# This gives the exact mod-p analogue of e^{2*pi*i/n}.
+
+function gauss_from_root(n, p, g, i_mod_p) {
+    inv2 = modinv_prime(2, p);
+    w_real = modpow(g, (p - 1) // n, p);
+    w_inv  = modinv_prime(w_real, p);
+    cos_n  = (w_real + w_inv) % p * inv2 % p;
+    sin_n  = (w_real - w_inv + p) % p * inv2 % p * i_mod_p % p;
+    return [cos_n, sin_n];
+}
+
+
+# ─────────────────────────────────────────────
+# FFT core — Cooley-Tukey over Gaussian integers mod p
+#
+# Identical butterfly structure to NTT, but:
+# - Elements are Gaussian integers [re, im]
+# - Arithmetic uses gauss_* functions
+# - Root of unity is a Gaussian integer w = [cos, sin] mod p
+# ─────────────────────────────────────────────
+
+function next_pow2(n) {
+    p = 1;
+    for i in range(64) {
+        if p >= n { return p; }
+        p = p * 2;
+    }
+    return p;
+}
+
+function pad_gauss(xs, sz) {
+    result = [];
+    for i in range(sz) {
+        if i < len(xs)  { result = result + [xs[i]]; }
+        if i >= len(xs) { result = result + [[0, 0]]; }
+    }
+    return result;
+}
+
+function bitrev(xs) {
+    n = len(xs);
+    result = [];
+    for i in range(n) { result = result + [xs[i]]; }
+
+    bits = 0;
+    temp = n;
+    for i in range(32) {
+        temp = temp >> 1;
+        if temp > 0 { bits = bits + 1; }
+    }
+
+    for i in range(n) {
+        j = 0;
+        x = i;
+        for b in range(bits) {
+            j = j << 1;
+            j = j | (x & 1);
+            x = x >> 1;
+        }
+        if j > i {
+            tmp = result[i];
+            result[i] = result[j];
+            result[j] = tmp;
+        }
+    }
+    return result;
+}
+
+# Core FFT butterfly over Gaussian integers mod p
+# xs    = list of Gaussian integers [re, im]
+# invert= 0 forward, 1 inverse
+# w     = primitive sz-th Gaussian root of unity [re, im] mod p
+# p     = the Gaussian prime
+function fft_core(xs, invert, w, p) {
+    n = len(xs);
+    result = bitrev(xs);
+
+    if invert == 1 {
+        w = gauss_inv(w, p);
+    }
+
+    length = 2;
+    for i in range(32) {
+        if length <= n {
+            # primitive length-th root = w^{n/length}
+            w_len = gauss_pow(w, n // length, p);
+            j = 0;
+            for k in range(n // length) {
+                ww = [1, 0];
+                for l in range(length // 2) {
+                    u = result[j + l];
+                    v = gauss_mul(result[j + l + length // 2], ww, p);
+                    result[j + l]               = gauss_add(u, v, p);
+                    result[j + l + length // 2] = gauss_sub(u, v, p);
+                    ww = gauss_mul(ww, w_len, p);
+                }
+                j = j + length;
+            }
+            length = length * 2;
+        }
+    }
+
+    if invert == 1 {
+        inv_n = modinv_prime(n, p);
+        for i in range(n) {
+            result[i] = [(result[i][0] * inv_n) % p, (result[i][1] * inv_n) % p];
+        }
+    }
+
+    return result;
+}
+
+
+# ─────────────────────────────────────────────
+# Integer-to-Gaussian lifting and output recovery
+#
+# Input polys have integer coeffs — lift to Gaussian as [coeff, 0].
+# Output is Gaussian integers mod p — recover real integer coeffs
+# by taking the real part and mapping back from Z/pZ to Z
+# (centered reduction: if x > p/2 then x - p).
+# ─────────────────────────────────────────────
+
+# Lift integer list to Gaussian integer list: k -> [k, 0]
+function lift_to_gauss(xs, p) {
+    result = [];
+    for i in range(len(xs)) {
+        result = result + [[xs[i] % p, 0]];
+    }
+    return result;
+}
+
+# Recover integer from Z/pZ using centered reduction
+function centered(x, p) {
+    x = x % p;
+    if x > p // 2 { return x - p; }
+    return x;
+}
+
+# Extract real integer coeffs from Gaussian integer list
+function extract_real(xs, p) {
+    result = [];
+    for i in range(len(xs)) {
+        result = result + [centered(xs[i][0], p)];
+    }
+    return result;
+}
+
+
+# ─────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────
+
+# Polynomial multiplication via Gaussian FFT, auto params
+function polymul_fft(xs, ys) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+
+    params = fft_params_for(sz);
+    if params == null { return null; }
+    p       = params[0];
+    i_mod_p = params[1];
+    w       = params[2];
+
+    xa = fft_core(pad_gauss(lift_to_gauss(xs, p), sz), 0, w, p);
+    ya = fft_core(pad_gauss(lift_to_gauss(ys, p), sz), 0, w, p);
+
+    za = [];
+    for i in range(sz) {
+        za = za + [gauss_mul(xa[i], ya[i], p)];
+    }
+
+    result_gauss = fft_core(za, 1, w, p);
+    result = extract_real(result_gauss, p);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+# Same but with explicit Gaussian prime p and its primitive root g
+function polymul_fft_params(xs, ys, p, g) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+    i_mod_p = sqrt_neg1(p);
+    w = gauss_from_root(sz, p, g, i_mod_p);
+
+    xa = fft_core(pad_gauss(lift_to_gauss(xs, p), sz), 0, w, p);
+    ya = fft_core(pad_gauss(lift_to_gauss(ys, p), sz), 0, w, p);
+
+    za = [];
+    for i in range(sz) {
+        za = za + [gauss_mul(xa[i], ya[i], p)];
+    }
+
+    result_gauss = fft_core(za, 1, w, p);
+    result = extract_real(result_gauss, p);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+# Arbitrary n-th root of unity FFT — same idea as NTT arbitrary
+# n controls which root; auto-rounded to valid multiple of sz
+function polymul_fft_arbitrary(xs, ys, n) {
+    result_len = len(xs) + len(ys) - 1;
+    sz = next_pow2(result_len);
+
+    if n < sz { n = sz; }
+    if n % sz != 0 { n = sz * (n // sz + 1); }
+
+    params = fft_params_for(n);
+    if params == null { return null; }
+    p       = params[0];
+    i_mod_p = params[1];
+    w_n     = params[2];   # primitive n-th Gaussian root
+
+    # derive primitive sz-th root: w_n^{n/sz}
+    w_sz = gauss_pow(w_n, n // sz, p);
+
+    xa = fft_core(pad_gauss(lift_to_gauss(xs, p), sz), 0, w_sz, p);
+    ya = fft_core(pad_gauss(lift_to_gauss(ys, p), sz), 0, w_sz, p);
+
+    za = [];
+    for i in range(sz) {
+        za = za + [gauss_mul(xa[i], ya[i], p)];
+    }
+
+    result_gauss = fft_core(za, 1, w_sz, p);
+    result = extract_real(result_gauss, p);
+
+    trimmed = [];
+    for i in range(result_len) { trimmed = trimmed + [result[i]]; }
+    return trimmed;
+}
+
+
+# ─────────────────────────────────────────────
+# Tests — all should print [4, 13, 28, 27, 18]
+# ─────────────────────────────────────────────
+
+a = [1, 2, 3];
+b = [4, 5, 6];
+
+pprint(polymul_fft(a, b));
+pprint(polymul_fft_arbitrary(a, b, 8));
+pprint(polymul_fft_arbitrary(a, b, 16));
