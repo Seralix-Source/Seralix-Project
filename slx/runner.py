@@ -73,11 +73,15 @@ _return_signal: type[_return_signal] = type('_return_signal', (Exception,), {
 })
 
 
-class struct: ...  # NOQA: N801
+class capsule: ...  # NOQA: N801
 
 
 class runner:  # NOQA: N801
     builtins: ClassVar[dict[str, Any]] = {
+        'time': __import__('time'),
+        'math': __import__('math'),
+        'random': __import__('random'),
+        'timeit': __import__('timeit'),
         'print': print,
         'pprint': pprint,
         'range': range,
@@ -98,11 +102,12 @@ class runner:  # NOQA: N801
         return self.stack[-1]
 
     def _new_struct(self, node: Capsule) -> Callable:
+        dct: dict[str, Expr | None] = dict(node.fields)
         names: list[str] = [name for name, default in node.fields]
         fields: dict[str, Any] = {name: self._run_node(default) for name, default in node.fields}
-        defaults: dict[str, Any] = {name: default for name, default in fields.items() if default is not None}
+        defaults: dict[str, Any] = {name: default for name, default in fields.items() if dct[name] is not None}
 
-        def __new__(cls: type[struct], *args: Any, **kwargs: Any) -> Any:
+        def __new__(cls: type[capsule], *args: Any, **kwargs: Any) -> Any:
             struct: type[struct] = object.__new__(cls)
             used: set[str] = set()
 
@@ -130,16 +135,17 @@ class runner:  # NOQA: N801
 
             return struct
 
-        return dataclass(type(f'{['struct', 'record'][node.frozen]}-{node.name}', (struct,), {  # type: ignore[return-value]
+        return dataclass(type(f'{['capsule', 'record'][node.frozen]}-{node.name}', (capsule,), {  # type: ignore[return-value]
             '__annotations__': dict.fromkeys(names, Any),
             '__new__': __new__,
             '__module__': None,
         }), frozen=node.frozen, slots=True)
 
     def _new_callable(self, node: LambdaFunction | Function) -> Callable:
+        dct: dict[str, Expr | None] = dict(node.params)
         names: list[str] = [name for name, default in node.params]
         params: dict[str, Any] = {name: self._run_node(default) for name, default in node.params}
-        defaults: dict[str, Any] = {name: default for name, default in params.items() if default is not None}
+        defaults: dict[str, Any] = {name: default for name, default in params.items() if dct[name] is not None}
 
         closure: dict[str, Any] = self.environ.copy()
         def callee(*args: Any, **kwargs: Any) -> Any:
@@ -231,7 +237,7 @@ class runner:  # NOQA: N801
                         if len(node.target.subscript) == 1:
                             self._run_node(node.target.target).__setitem__(self._run_node(node.target.subscript[0]), self._run_node(node.object))  # type: ignore[attr-defined]
                         else:
-                            self._run_node(node.target.target).__setitem__(tuple(lambda expr: self._run_node(expr), node.target.subscript), self._run_node(node.object))  # type: ignore[attr-defined]
+                            self._run_node(node.target.target).__setitem__(tuple(map(lambda expr: self._run_node(expr), node.target.subscript)), self._run_node(node.object))  # type: ignore[attr-defined]
                     else:
                         raise TypeError(f"cannot assign to {type(node.target).__name__}")
                 else:
@@ -259,7 +265,7 @@ class runner:  # NOQA: N801
             case SubscriptAccess():
                 if len(node.subscript) == 1:
                     return self._run_node(node.target).__getitem__(self._run_node(node.subscript[0]))  # type: ignore[attr-defined]
-                return self._run_node(node.target).__getitem__(tuple(lambda expr: self._run_node(expr), node.subscript))  # type: ignore[attr-defined]
+                return self._run_node(node.target).__getitem__(tuple(map(lambda expr: self._run_node(expr), node.subscript)))  # type: ignore[attr-defined]
             case SubscriptAccess.Slice():
                 return slice(self._run_node(node.start), self._run_node(node.stop), self._run_node(node.step))  # type: ignore[arg-type]
             case Call():

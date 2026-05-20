@@ -7,7 +7,6 @@ from unittest import skip
 
 from funcparserlib.lexer import *
 from funcparserlib.parser import *
-from funcparserlib.parser import maybe, skip
 
 from . import lexer
 
@@ -352,8 +351,8 @@ ifelse_stmt: Parser[Token, IfElse] = (
             skip(wd('if')) + expr + codeblock
         ) >> (lambda match: IfElse.IfThen(condition=match[0], codeblock=match[1]))) +
         many((
-            skip(wd('elif')) + expr + codeblock >> (lambda match: IfElse.IfThen(condition=match[0], codeblock=match[1]))
-        ))
+             skip(wd('elif')) + expr + codeblock
+        ) >> (lambda match: IfElse.IfThen(condition=match[0], codeblock=match[1])))
     ) >> (lambda match: [match[0], *match[1]])) +
     maybe(skip(wd('else')) + codeblock)
 ) >> (lambda match: IfElse(ifthens=match[0], otherwise=match[1] or []))
@@ -363,21 +362,21 @@ class Capsule(Stmt):
     name: str
     fields: list[tuple[str, Expr | None]]
     frozen: bool
-def StructFields(fields: list[tuple[str, Expr | None]]) -> list[tuple[str, Expr | None]]:  # NOQA: N802
+def CapsuleFields(fields: list[tuple[str, Expr | None]]) -> list[tuple[str, Expr | None]]:  # NOQA: N802
     defaulting = False
     for name, default in fields:
         if defaulting and default is None:
             raise SyntaxError(f"non-default field {name!r} follows default field")
         defaulting = default is not None
     return fields
-_struct_field: Parser[Token, tuple[str, Expr | None]] = (name + maybe(skip(op('=')) + expr)) >> (lambda match: (match[0], match[1]))
-struct: Parser[Token, Capsule] = (
+_capsule_field: Parser[Token, tuple[str, Expr | None]] = (name + maybe(skip(op('=')) + expr)) >> (lambda match: (match[0], match[1]))
+capsule: Parser[Token, Capsule] = (
     (wd('struct') | wd('record')) + name + skip(op('(')) +
     maybe((
-        _struct_field + many(skip(op(',')) + _struct_field)
-    ) >> (lambda match: StructFields([match[0], *match[1]]))) +
+        _capsule_field + many(skip(op(',')) + _capsule_field)
+    ) >> (lambda match: CapsuleFields([match[0], *match[1]]))) +
     skip(op(')'))
-) >> (lambda match: Capsule(name=match[1], fields=match[2], frozen=match[0] == 'record'))
+) >> (lambda match: Capsule(name=match[1], fields=match[2] or [], frozen=match[0] == 'record'))
 
 
 @dataclass
@@ -433,7 +432,7 @@ stmt.define(
     | while_stmt
     | ifelse_stmt
     | assign
-    | (struct + skip(op(';')))
+    | (capsule + skip(op(';')))
     | (expr + skip(op(';')))
 )
 
