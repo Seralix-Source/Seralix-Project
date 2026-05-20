@@ -1,0 +1,475 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+\lstdefinelanguage{Seralix}{
+  morekeywords={function, return, if, elif, else, while, for, in, and, or, not, null, true, false, struct, record},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\lstset{
+  language=Seralix,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{red},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!20},
+  backgroundcolor=\color{black!3}
+}
+
+\title{Seralix: A Minimal Language Prototype for\\
+Expressing FFT and NTT Algorithms over Exact Integer Arithmetic}
+
+\author{
+\IEEEauthorblockN{David Mateo Barbosa Monsalve}
+\IEEEauthorblockA{
+Universidad de los Andes \\
+Systems and Computing Engineering
+}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper presents Seralix, a minimal programming language built from scratch as a proof of capability in language design, parsing, and interpretation. The language was used to implement the Fast Fourier Transform (FFT) and the Number Theoretic Transform (NTT) — two algorithms for efficient polynomial multiplication. A deliberate design goal was to avoid floating-point arithmetic entirely: the FFT runs over exact integer representations of complex numbers, and the NTT uses only modular integer arithmetic. All implementations produce correct results, and measured execution times show clear performance differences between the two approaches. The project demonstrates that a working language pipeline and a family of non-trivial algorithms can both be built from first principles by a single developer.
+\end{abstract}
+
+\section{Introduction}
+
+The Fast Fourier Transform is one of the most important algorithms in computing. It reduces the cost of computing a Discrete Fourier Transform from $O(n^2)$ to $O(n \log n)$, and it appears everywhere from signal processing to polynomial multiplication to data compression.
+
+In most settings, FFT is used through a library — NumPy, FFTW, or similar — where the implementation details are hidden. This project takes the opposite approach: instead of using an existing language and library, both the execution environment and the algorithm were built from the ground up.
+
+The execution environment is Seralix, a small interpreted programming language with its own lexer, parser, and runtime. The algorithms — FFT, NTT, and several variants of each — are written directly in Seralix, using only the constructs the language provides.
+
+A key decision throughout was to avoid floating-point numbers. Standard FFT implementations compute roots of unity as floating-point complex numbers, which introduces rounding error. This project uses two exact alternatives instead:
+
+\begin{itemize}
+    \item \textbf{NTT}: replaces complex roots of unity with integer roots computed modulo a prime. All arithmetic stays in whole numbers.
+    \item \textbf{Gaussian integer FFT}: represents complex numbers as pairs of integers and performs all arithmetic modulo a carefully chosen prime. The result is exact complex arithmetic with no floating-point involved.
+\end{itemize}
+
+The motivation for the project is simple: it was built to prove it could be done.
+
+\section{Problem Statement}
+
+The project addresses two problems at once: building a language capable of expressing the algorithms, and implementing the algorithms correctly within it.
+
+\subsection{What FFT and NTT Need}
+
+To implement these algorithms, the language must support:
+
+\begin{itemize}
+    \item Functions that call themselves recursively
+    \item Lists that can be read and written by index
+    \item Integer arithmetic, including bitwise operations like shifts and masks
+    \item Loops and conditional branches
+    \item Passing functions as arguments
+\end{itemize}
+
+\subsection{Research Questions}
+
+\begin{quote}
+Can a minimal programming language, built from scratch, correctly implement FFT and NTT while preserving $O(n \log n)$ complexity and avoiding floating-point arithmetic?
+\end{quote}
+
+\begin{quote}
+What is the performance cost of running these algorithms inside a tree-walking interpreter compared to native execution?
+\end{quote}
+
+\section{System Architecture}
+
+A Seralix program goes through four stages before producing output:
+
+\begin{figure}[h]
+\centering
+\begin{tabular}{c}
+\texttt{Source Code (.slx)} \\
+$\downarrow$ \\
+\textbf{Lexer} — splits text into tokens \\
+$\downarrow$ \\
+\textbf{Parser} — builds a syntax tree \\
+$\downarrow$ \\
+\textbf{Abstract Syntax Tree (AST)} \\
+$\downarrow$ \\
+\textbf{Interpreter} — walks the tree and executes it \\
+$\downarrow$ \\
+Output
+\end{tabular}
+\caption{Execution pipeline of Seralix}
+\end{figure}
+
+\subsection{Lexer}
+
+The lexer reads raw source code and breaks it into tokens — the smallest meaningful units of the language. Whitespace and comments are discarded. Everything else becomes a named token:
+
+\begin{lstlisting}
+# Source
+x = 10 + y;
+
+# Token stream
+[NAME('x'), OP('='), NUMBER('10'),
+ OP('+'), NAME('y'), OP(';')]
+\end{lstlisting}
+
+Keywords like \texttt{if} and \texttt{function} are not treated specially by the lexer — they come out as \texttt{NAME} tokens and are recognized by the parser. This keeps the lexer simple and general.
+
+\subsection{Parser}
+
+The parser takes the token stream and builds an Abstract Syntax Tree. It is written using \texttt{funcparserlib}, a combinator library, with manual operator precedence handling. Each level of precedence is defined as a rule that folds operators left-to-right, correctly expressing left-associativity:
+
+\begin{lstlisting}
+# Multiplication and division (left-associative)
+multiplicative = (
+    unary + many(
+        (op('*') | op('/') | op('//') | op('%'))
+        + unary
+    )
+) >> fold_left_into_BinaryOp
+\end{lstlisting}
+
+Calls, member access, and subscript operations are all handled as chains of postfix operations applied left-to-right, so expressions like \texttt{a.b[0](x).c} parse and evaluate correctly.
+
+\subsection{Abstract Syntax Tree}
+
+The AST is a tree where each node represents one operation or value. Nodes are plain Python data classes. The full set covers:
+
+\begin{itemize}
+    \item \textbf{Values}: numbers, strings, booleans, null, lists, dictionaries
+    \item \textbf{Operations}: binary operators, unary operators, function calls, member access, subscript access, ternary expressions
+    \item \textbf{Statements}: assignment, function definition, return, for-in loop, while loop, if-elif-else, struct/record definition
+\end{itemize}
+
+\subsection{Interpreter}
+
+The interpreter walks the AST and evaluates each node. It maintains a stack of variable environments, one per function call, so that local variables in one function do not interfere with another.
+
+Functions in Seralix are closures: they capture the environment that exists when they are defined, not when they are called. This allows functions defined later in a file to be called from functions defined earlier:
+
+\begin{lstlisting}
+closure = self.environ.copy()
+
+def callee(*args, **kwargs):
+    # merge: call-time environ provides names
+    # declared after this function was defined;
+    # closure provides names from definition time
+    self.stack.append(
+        self.environ.copy() | closure.copy()
+    )
+    ...
+    finally:
+        self.stack.pop()
+\end{lstlisting}
+
+Compound assignment operators like \texttt{+=} and \texttt{>>=} are handled by rewriting them at runtime into a plain assignment combined with the corresponding binary operation, keeping the AST simple.
+
+\section{Language Design}
+
+Seralix is intentionally small. Every feature in it exists because an algorithm needed it.
+
+\subsection{Functions}
+
+\begin{lstlisting}
+# Inline lambda
+square = (x) -> x * x;
+
+# Named function with a default parameter
+function add(x, y=2) {
+    return x + y;
+}
+\end{lstlisting}
+
+If a parameter with a default value is followed by one without, the parser raises a syntax error before the program runs.
+
+\subsection{Control Flow}
+
+\begin{lstlisting}
+if x > 0 {
+    print("positive");
+} elif x == 0 {
+    print("zero");
+} else {
+    print("negative");
+}
+\end{lstlisting}
+
+\subsection{Loops}
+
+\begin{lstlisting}
+while i < n {
+    i += 1;
+}
+
+for item in range(10) {
+    result = result + [item];
+}
+\end{lstlisting}
+
+\subsection{Data Structures}
+
+\begin{lstlisting}
+# List with indexed assignment
+xs = [1, 2, 3];
+xs[0] = 42;
+
+# Slice access (used in FFT)
+evens = xs[0::2];
+odds  = xs[1::2];
+
+# User-defined types
+struct Point(x, y);      # mutable
+record Color(r, g, b);   # immutable
+\end{lstlisting}
+
+\subsection{Operators}
+
+The full operator set is supported: arithmetic, bitwise (\texttt{\&}, \texttt{|}, \texttt{\^{}}, \texttt{<<}, \texttt{>>}), comparison, boolean, ternary (\texttt{? :}), and all compound assignment forms. Precedence is enforced by the grammar, not at runtime.
+
+\section{Theory: Why FFT Works and How NTT Improves It}
+
+\subsection{The DFT and Its Cost}
+
+The Discrete Fourier Transform of a sequence $a_0, \dots, a_{n-1}$ is:
+
+\begin{equation}
+A_k = \sum_{j=0}^{n-1} a_j \,\omega_n^{jk}
+\end{equation}
+
+where $\omega_n = e^{2\pi i / n}$ is a complex root of unity. Computing this directly for every $k$ costs $O(n^2)$ multiplications.
+
+\subsection{FFT: Divide and Conquer}
+
+The Cooley-Tukey FFT splits the sequence into even and odd indexed elements and computes two smaller transforms:
+
+\begin{equation}
+A_k = A_k^{(\text{even})} + \omega_n^k \cdot A_k^{(\text{odd})}
+\end{equation}
+\begin{equation}
+A_{k+n/2} = A_k^{(\text{even})} - \omega_n^k \cdot A_k^{(\text{odd})}
+\end{equation}
+
+This halving recurrence gives $T(n) = 2T(n/2) + O(n)$, which solves to $O(n \log n)$.
+
+\subsection{NTT: Exact Integer Version}
+
+The NTT replaces the floating-point complex root $\omega_n$ with an integer root computed modulo a prime $p$. If $p$ has a primitive root $g$ and $n$ divides $p - 1$, then:
+
+\begin{equation}
+\omega_n \equiv g^{(p-1)/n} \pmod{p}
+\end{equation}
+
+satisfies $\omega_n^n \equiv 1 \pmod{p}$, which is all the butterfly needs. This project uses $p = 998244353$ with primitive root $g = 3$, a standard choice in competitive programming that supports transform sizes up to $2^{23}$.
+
+\subsection{Gaussian Integer FFT: Exact Complex Version}
+
+For cases where actual complex structure matters, this project also implements an FFT over Gaussian integers modulo a prime. A Gaussian integer is a complex number $a + bi$ where both $a$ and $b$ are integers. When working modulo a prime $p$ where $p \equiv 1 \pmod{4}$, a square root of $-1$ exists modulo $p$, which means we can represent $i$ exactly as an integer. Complex numbers then become pairs of integers $[re, im]$, and all arithmetic stays exact:
+
+\begin{equation}
+(a + bi)(c + di) = (ac - bd) + (ad + bc)i
+\end{equation}
+
+The butterfly structure of the FFT is identical to the NTT — the only difference is that each multiplication uses Gaussian integer arithmetic instead of scalar modular arithmetic.
+
+\section{Implementation}
+
+\subsection{Recursive FFT}
+
+The language was first validated using a recursive FFT, which directly expresses the divide-and-conquer structure:
+
+\begin{lstlisting}
+function fft(a, invert=false) {
+    if len(a) == 1 {
+        return [a[0]];
+    }
+    even = fft(a[0::2], invert);
+    odd  = fft(a[1::2], invert);
+    # butterfly recombination over even and odd...
+}
+\end{lstlisting}
+
+This confirms that the language handles recursion, slice indexing, and list manipulation correctly.
+
+\subsection{Iterative NTT}
+
+The production NTT uses an iterative butterfly with bit-reversal permutation, which avoids the overhead of recursion. The key insight is that the primitive root of unity for any valid transform size can be derived in a single modular exponentiation — no search needed:
+
+\begin{lstlisting}
+# g^{(p-1)/n} mod p gives the primitive n-th root
+function ntt_root(n, m, g) {
+    return modpow(g, (m - 1) // n, m);
+}
+
+function ntt_core(xs, invert, w, m) {
+    n      = len(xs);
+    result = bitrev(xs);
+    if invert == 1 { w = modinv_prime(w, m); }
+    length = 2;
+    for i in range(32) {
+        if length <= n {
+            w_len = modpow(w, n // length, m);
+            j = 0;
+            for k in range(n // length) {
+                ww = 1;
+                for l in range(length // 2) {
+                    u = result[j + l];
+                    v = result[j + l + length // 2]
+                            * ww % m;
+                    result[j + l] = (u + v) % m;
+                    result[j + l + length // 2]
+                            = (u - v + m) % m;
+                    ww = ww * w_len % m;
+                }
+                j = j + length;
+            }
+            length = length * 2;
+        }
+    }
+    if invert == 1 {
+        inv_n = modinv_prime(n, m);
+        for i in range(n) {
+            result[i] = result[i] * inv_n % m;
+        }
+    }
+    return result;
+}
+\end{lstlisting}
+
+\subsection{Gaussian Integer FFT}
+
+The Gaussian integer FFT has the same butterfly structure as the NTT, but each multiplication is replaced with the complex version:
+
+\begin{lstlisting}
+function gauss_mul(x, y, p) {
+    re = (x[0]*y[0] - x[1]*y[1]) % p;
+    im = (x[0]*y[1] + x[1]*y[0]) % p;
+    return [re, im];
+}
+\end{lstlisting}
+
+After the inverse transform, output values are mapped back from $\{0, \dots, p-1\}$ to actual integers using centered reduction: any value greater than $p/2$ is replaced by $\text{value} - p$.
+
+\subsection{Polynomial Multiplication}
+
+All transform variants are used for polynomial multiplication via the same three-step process:
+
+\begin{lstlisting}
+function polymul_ntt(xs, ys) {
+    sz = next_pow2(len(xs) + len(ys) - 1);
+    w  = ntt_root(sz, MOD, PRIM_ROOT);
+    # 1. Forward transform both inputs
+    xa = ntt_core(pad(xs, sz), 0, w, MOD);
+    ya = ntt_core(pad(ys, sz), 0, w, MOD);
+    # 2. Pointwise multiply in transform domain
+    za = [];
+    for i in range(sz) {
+        za = za + [xa[i] * ya[i] % MOD];
+    }
+    # 3. Inverse transform to get the product
+    return trim(ntt_core(za, 1, w, MOD));
+}
+\end{lstlisting}
+
+Both transforms also support arbitrary root orders: if the default prime does not support the requested transform size, the implementation finds a suitable prime automatically and derives the correct root in one step.
+
+\section{Results and Validation}
+
+All implementations were tested against the known product:
+
+\begin{equation}
+(1 + 2x + 3x^2)(4 + 5x + 6x^2) = 4 + 13x + 28x^2 + 27x^3 + 18x^4
+\end{equation}
+
+\begin{lstlisting}
+a = [1, 2, 3];
+b = [4, 5, 6];
+
+pprint(polymul_ntt(a, b));
+# Output: [4, 13, 28, 27, 18]
+
+pprint(polymul_fft(a, b));
+# Output: [4, 13, 28, 27, 18]
+\end{lstlisting}
+
+All six variants — NTT standard, NTT with $n=8$, NTT with $n=16$, Gaussian FFT standard, Gaussian FFT with $n=8$, Gaussian FFT with $n=16$ — produce identical output, cross-validated against the naive $O(n^2)$ baseline.
+
+\begin{table}[h]
+\centering
+\caption{Measured execution times for polynomial multiplication of \texttt{[1,2,3]} $\times$ \texttt{[4,5,6]}}
+\begin{tabular}{lc}
+\toprule
+\textbf{Method} & \textbf{Time (ms)} \\
+\midrule
+\texttt{polymul\_fft} (Gaussian FFT)        & 40.1 \\
+\texttt{polymul\_fft\_arbitrary} ($n=8$)    & 42.4 \\
+\texttt{polymul\_fft\_arbitrary} ($n=16$)   & 41.2 \\
+\midrule
+\texttt{polymul\_ntt} (standard)            & 18.9 \\
+\texttt{polymul\_ntt\_arbitrary} ($n=8$)    & 18.7 \\
+\texttt{polymul\_ntt\_arbitrary} ($n=16$)   & 18.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+
+\subsection{What the Results Show}
+
+The language correctly handles everything the algorithms need: recursion, list indexing and assignment, bitwise arithmetic, nested loops, and closures. The interpreter executes non-trivial computations correctly across all tested cases. The syntax proved sufficient for expressing a complete family of transform algorithms without any workarounds.
+
+\subsection{Why NTT Is Faster Than Gaussian FFT}
+
+NTT is about twice as fast as the Gaussian FFT. The reason is straightforward: each NTT butterfly step requires one modular multiplication, while each Gaussian FFT butterfly requires the equivalent of four — two multiplications and two additions to compute the real and imaginary parts separately. The extra work per step adds up across all butterfly stages.
+
+The arbitrary root variants show no measurable overhead because the default prime $p = 998244353$ already supports transform sizes of $8$ and $16$. The root is computed in a single operation and no prime search is needed.
+
+\subsection{Interpreter Overhead}
+
+The millisecond-scale execution times are much slower than what native Python would take for the same computation — which would be in the microseconds. This gap comes from the cost of tree-walking interpretation: every operation requires a Python function call, a dictionary lookup in the environment stack, and pattern matching on the AST node type. This is expected behavior for a tree-walking interpreter and does not reflect a flaw in the algorithm. The $O(n \log n)$ structure is intact; the constant factor is the price of interpretation.
+
+\subsection{Floating-Point Was Not a Limitation}
+
+An earlier version of this work listed floating-point precision as a limitation. It is not a limitation of this implementation. Both the NTT and the Gaussian integer FFT produce exact integer results with no rounding at any stage. The standard FFT approach — computing $e^{2\pi i k/n}$ as a floating-point number — was deliberately avoided from the start.
+
+\subsection{Remaining Limitations}
+
+\begin{itemize}
+    \item \textbf{List append performance}: adding an element to a list via \texttt{result + [x]} copies the entire list each time, which is inefficient for large inputs.
+    \item \textbf{No caching}: functions like the cyclotomic polynomial builder recompute their result on every call, even when the input has not changed.
+    \item \textbf{No type checking}: passing a non-prime as a modulus, for example, produces incorrect output rather than an early error.
+    \item \textbf{Stack depth}: deeply recursive calls are bounded by Python's own recursion limit.
+\end{itemize}
+
+\section{Conclusion}
+
+This project demonstrates that a minimal programming language can be designed and built from first principles, and that non-trivial algorithms — FFT, NTT, and their exact arithmetic variants — can be correctly implemented and executed within it.
+
+Seralix provides a working interpreter pipeline, supports the full set of constructs needed to express these algorithms, and produces verified correct results. The performance measurements are consistent with what a tree-walking interpreter should produce, and the algorithmic structure is preserved at $O(n \log n)$.
+
+More than the specific algorithms, the project validates the process: a language was designed, built, and used to solve a real computational problem, entirely from scratch.
+
+\textit{It was built to prove it could be done. It was.}
+
+\section{Future Work}
+
+\begin{itemize}
+    \item \textbf{Static type system}: catch parameter and type errors at parse time rather than during execution.
+    \item \textbf{Module system}: allow splitting programs across multiple \texttt{.slx} files.
+    \item \textbf{In-place list mutation}: replace list concatenation with true append to make large-input algorithms practical.
+    \item \textbf{Compiled backend}: generate Python bytecode or C from the AST to remove interpreter overhead while keeping the language model intact.
+    \item \textbf{Cyclotomic integer transforms}: the algebraic infrastructure for exact arithmetic in $\mathbb{Z}[\omega_n]$ is already implemented in Seralix; connecting it to the butterfly kernel is a natural next step.
+\end{itemize}
+
+\end{document}
